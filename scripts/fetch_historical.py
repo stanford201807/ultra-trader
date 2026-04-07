@@ -9,11 +9,18 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 import argparse
-from datetime import datetime, timedelta
+import pickle
+from datetime import datetime, timedelta, timezone
 import pandas as pd
 from dotenv import load_dotenv
 
 load_dotenv()
+
+
+CONTRACT_FAMILY_MAP = {
+    "TMF": {"family": "TMF", "fallback": "TMFR1"},
+    "TGF": {"family": "TGF", "fallback": "TGFR1"},
+}
 
 
 def fetch_kbars(days: int = 60, instrument: str = "TMF"):
@@ -29,13 +36,14 @@ def fetch_kbars(days: int = 60, instrument: str = "TMF"):
     ca_password = os.environ.get("SHIOAJI_CA_PASSWORD")
 
     if not api_key or not secret_key:
-        print("❌ 缺少 SHIOAJI_API_KEY / SHIOAJI_SECRET_KEY 環境變數")
+        print("缺少 SHIOAJI_API_KEY / SHIOAJI_SECRET_KEY 環境變數")
         return None
 
-    print(f"🔗 登入 Shioaji...")
+    print(f"登入 Shioaji...")
     api.login(
         api_key=api_key,
         secret_key=secret_key,
+        fetch_contract=False,
     )
 
     # 啟用 CA（某些操作需要）
@@ -47,28 +55,28 @@ def fetch_kbars(days: int = 60, instrument: str = "TMF"):
                 person_id=person_id,
             )
         except Exception as e:
-            print(f"⚠️ CA 啟用失敗（不影響行情查詢）: {e}")
+            print(f"CA 啟用失敗（不影響行情查詢）: {e}")
 
     # 取得合約
-    if instrument == "TMF":
-        contract = min(
-            [c for c in api.Contracts.Futures.MXF
-             if hasattr(c, 'delivery_month') and c.delivery_month],
-            key=lambda c: c.delivery_month,
-            default=api.Contracts.Futures.MXF.MXF1
-        )
-    elif instrument == "TGF":
-        contract = min(
-            [c for c in api.Contracts.Futures.TGF
-             if hasattr(c, 'delivery_month') and c.delivery_month],
-            key=lambda c: c.delivery_month,
-            default=api.Contracts.Futures.TGF.TGF1
-        )
-    else:
-        print(f"❌ 不支援的商品: {instrument}")
+    contracts = _load_local_contracts()
+    if contracts is None:
+        print("無法讀取本機 contracts 快取，請先確認 Shioaji 合約檔存在")
+        api.logout()
         return None
 
-    print(f"📦 合約: {contract.code} ({contract.name})")
+    instrument_key = instrument.upper()
+    if instrument_key not in CONTRACT_FAMILY_MAP:
+        print(f"不支援的商品: {instrument}")
+        api.logout()
+        return None
+
+    contract = _resolve_contract(contracts, instrument_key)
+    if contract is None:
+        print(f"找不到 {instrument_key} 可用合約")
+        api.logout()
+        return None
+
+    print(f"合約: {contract.code} ({contract.name})")
 
     # Shioaji kbars API 有日期範圍限制，分批拉取
     all_bars = []
@@ -86,7 +94,7 @@ def fetch_kbars(days: int = 60, instrument: str = "TMF"):
         start_str = start.strftime("%Y-%m-%d")
         end_str = current_end.strftime("%Y-%m-%d")
 
-        print(f"  📥 拉取 {start_str} ~ {end_str}...")
+        print(f"  拉取 {start_str} ~ {end_str}...")
 
         try:
             kbars = api.kbars(
@@ -98,15 +106,7 @@ def fetch_kbars(days: int = 60, instrument: str = "TMF"):
             if kbars and hasattr(kbars, 'Close') and len(kbars.Close) > 0:
                 for i in range(len(kbars.Close)):
                     raw_ts = kbars.ts[i]
-                    if isinstance(raw_ts, (int, float)):
-                        epoch_sec = raw_ts / 1e9 if raw_ts > 1e12 else raw_ts
-                        ts = datetime.fromtimestamp(epoch_sec)
-                    elif hasattr(raw_ts, 'to_pydatetime'):
-                        ts = raw_ts.to_pydatetime()
-                        if hasattr(ts, 'tzinfo') and ts.tzinfo is not None:
-                            ts = ts.astimezone().replace(tzinfo=None)
-                    else:
-                        ts = raw_ts
+                    ts = _normalize_kbar_timestamp(raw_ts)
 
                     all_bars.append({
                         "datetime": ts,
@@ -116,17 +116,17 @@ def fetch_kbars(days: int = 60, instrument: str = "TMF"):
                         "close": float(kbars.Close[i]),
                         "volume": int(kbars.Volume[i]),
                     })
-                print(f"    ✅ {len(kbars.Close)} 根K棒")
+                print(f"    {len(kbars.Close)} 根K棒")
             else:
-                print(f"    ⚠️ 無資料")
+                print(f"    無資料")
         except Exception as e:
-            print(f"    ❌ 拉取失敗: {e}")
+            print(f"    拉取失敗: {e}")
 
         current_end = start - timedelta(days=1)
         remaining_days -= fetch_days
 
     if not all_bars:
-        print("❌ 沒有拉到任何資料")
+        print("沒有拉到任何資料")
         api.logout()
         return None
 
@@ -142,14 +142,14 @@ def fetch_kbars(days: int = 60, instrument: str = "TMF"):
     filepath = data_dir / filename
     df.to_csv(filepath, index=False)
 
-    print(f"\n✅ 完成！共 {len(df)} 根K棒")
-    print(f"📊 期間: {df['datetime'].iloc[0]} ~ {df['datetime'].iloc[-1]}")
-    print(f"💾 儲存: {filepath}")
+    print(f"\n完成！共 {len(df)} 根K棒")
+    print(f"期間: {df['datetime'].iloc[0]} ~ {df['datetime'].iloc[-1]}")
+    print(f"儲存: {filepath}")
 
     # 最近行情摘要
     recent = df.tail(300)  # 最近 300 根（約 1 天日盤）
     if len(recent) > 0:
-        print(f"\n📈 最近行情摘要:")
+        print(f"\n最近行情摘要:")
         print(f"   最新價: {recent['close'].iloc[-1]:,.0f}")
         print(f"   最高價: {recent['high'].max():,.0f}")
         print(f"   最低價: {recent['low'].min():,.0f}")
@@ -160,13 +160,64 @@ def fetch_kbars(days: int = 60, instrument: str = "TMF"):
     return df
 
 
+def _load_local_contracts():
+    """讀取本機 Shioaji contracts 快取，避開登入時的 lock 問題"""
+    cache_dir = Path.home() / ".shioaji"
+    candidates = sorted(cache_dir.glob("contracts-*.pkl"), reverse=True)
+    for path in candidates:
+        try:
+            with path.open("rb") as fh:
+                return pickle.load(fh)
+        except Exception as e:
+            print(f"讀取 contracts 快取失敗: {path} | {e}")
+    return None
+
+
+def _resolve_contract(contracts, instrument: str):
+    """依專案商品代碼解析對應的 Shioaji 合約族群。"""
+    spec = CONTRACT_FAMILY_MAP.get(instrument.upper())
+    if spec is None:
+        return None
+
+    futures = getattr(contracts, "Futures", None)
+    family = getattr(futures, spec["family"], None) if futures is not None else None
+    if family is None:
+        return None
+
+    contract_list = [
+        contract
+        for contract in family
+        if hasattr(contract, "delivery_month") and contract.delivery_month
+    ]
+    if contract_list:
+        return min(contract_list, key=lambda contract: contract.delivery_month)
+
+    return getattr(family, spec["fallback"], None)
+
+
+def _normalize_kbar_timestamp(raw_ts) -> datetime:
+    """將 Shioaji kbars ts 統一轉成台灣本地時間的 naive datetime。"""
+    if isinstance(raw_ts, (int, float)):
+        epoch_sec = raw_ts / 1e9 if raw_ts > 1e12 else raw_ts
+        # Shioaji kbars.ts 可直接用 UTC epoch 轉回本地盤中時間。
+        return datetime.fromtimestamp(epoch_sec, timezone.utc).replace(tzinfo=None)
+
+    if hasattr(raw_ts, "to_pydatetime"):
+        ts = raw_ts.to_pydatetime()
+        if getattr(ts, "tzinfo", None) is not None:
+            return ts.astimezone().replace(tzinfo=None)
+        return ts
+
+    return raw_ts
+
+
 def main():
     parser = argparse.ArgumentParser(description="從 Shioaji 拉取歷史 K 棒")
     parser.add_argument("--days", type=int, default=60, help="拉取天數")
     parser.add_argument("--instrument", type=str, default="TMF", help="商品 (TMF/TGF)")
     args = parser.parse_args()
 
-    print(f"🚀 拉取 {args.instrument} 歷史資料（{args.days} 天）")
+    print(f"拉取 {args.instrument} 歷史資料（{args.days} 天）")
     fetch_kbars(args.days, args.instrument)
 
 

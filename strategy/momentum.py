@@ -12,6 +12,8 @@ from core.market_data import KBar, MarketSnapshot
 from core.position import Position, Side
 from strategy.base import BaseStrategy, Signal, SignalDirection
 from strategy.filters import MarketRegime, MarketRegimeClassifier, SessionManager, SessionPhase
+from strategy.orderbook_features import OrderbookFeatures
+from strategy.orderbook_filter import OrderbookFilter
 from strategy.signals import MultiFactorSignalGenerator, AdaptiveParams
 
 
@@ -32,9 +34,13 @@ class AdaptiveMomentumStrategy(BaseStrategy):
     def name(self) -> str:
         return "自適應動量策略"
 
-    def __init__(self):
+    def __init__(self, orderbook_filter: Optional[OrderbookFilter] = None):
         self.regime_classifier = MarketRegimeClassifier()
         self.signal_generator = MultiFactorSignalGenerator()
+        self.orderbook_filter = orderbook_filter or OrderbookFilter()
+        self._latest_orderbook_features = OrderbookFeatures()
+        self._last_orderbook_decision_reason = ""
+        self._last_orderbook_blocked = False
         self._cooldown_remaining = 0
         self._last_regime = MarketRegime.RANGING
         self._last_signal_strength = 0.0
@@ -44,6 +50,8 @@ class AdaptiveMomentumStrategy(BaseStrategy):
                 snapshot_5m: MarketSnapshot = None,
                 snapshot_15m: MarketSnapshot = None) -> Optional[Signal]:
         """K 棒收盤時的決策邏輯（升級版）"""
+        self._last_orderbook_decision_reason = ""
+        self._last_orderbook_blocked = False
 
         # 0. 盤別檢查 — 收盤前 30 分不開新倉
         phase = self._session.get_phase()
@@ -81,6 +89,8 @@ class AdaptiveMomentumStrategy(BaseStrategy):
                 if signal.strength < (0.60 + open_boost):
                     return None
                 self._last_signal_strength = signal.strength
+                if not self._orderbook_allows_entry(signal, phase, regime, kbar.datetime, snapshot):
+                    return None
                 logger.info(f"[CRISIS SHORT] strength: {signal.strength:.2f} | {signal.reason}")
             return signal
 
@@ -89,6 +99,8 @@ class AdaptiveMomentumStrategy(BaseStrategy):
             signal = self._crisis_reversal_signal(snapshot)
             if signal:
                 self._last_signal_strength = signal.strength
+                if not self._orderbook_allows_entry(signal, phase, regime, kbar.datetime, snapshot):
+                    return None
                 logger.info(f"[CRISIS REVERSAL] strength: {signal.strength:.2f} | {signal.reason}")
             return signal
 
@@ -113,12 +125,46 @@ class AdaptiveMomentumStrategy(BaseStrategy):
             if signal.strength < (self.signal_generator.params.min_signal_strength + open_boost):
                 return None
             self._last_signal_strength = signal.strength
+            if not self._orderbook_allows_entry(signal, phase, regime, kbar.datetime, snapshot):
+                return None
             logger.info(
                 f"[Signal] {signal.direction.value} | "
                 f"strength: {signal.strength:.2f} | {signal.reason}"
             )
 
         return signal
+
+    def update_orderbook_features(self, features: Optional[OrderbookFeatures]):
+        """更新最新的 orderbook 特徵（由 engine 注入）"""
+        self._latest_orderbook_features = features or OrderbookFeatures()
+
+    def _orderbook_allows_entry(
+        self,
+        signal: Signal,
+        phase: SessionPhase,
+        regime: MarketRegime,
+        now=None,
+        snapshot: MarketSnapshot = None,
+    ) -> bool:
+        """用 orderbook 特徵確認是否允許進場"""
+        decision = self.orderbook_filter.allow_entry(
+            signal.direction,
+            self._latest_orderbook_features,
+            phase=phase,
+            regime=regime,
+            now=now,
+            volatility_ratio=snapshot.atr_ratio if snapshot else 1.0,
+        )
+        self._last_orderbook_decision_reason = decision.reason
+        self._last_orderbook_blocked = not decision.allowed
+        if not decision.allowed:
+            logger.info(
+                f"[Orderbook] reject {signal.direction.value} | "
+                f"reason: {decision.reason} | spread={self._latest_orderbook_features.spread:.1f} | "
+                f"bias={self._latest_orderbook_features.pressure_bias}"
+            )
+            return False
+        return True
 
     def _crisis_short_signal(self, snapshot: MarketSnapshot) -> Optional[Signal]:
         """

@@ -37,6 +37,7 @@ from core.logger import setup_logger, log_trade, log_order, log_fill, log_pnl
 from core.instrument_config import INSTRUMENT_SPECS, get_spec, InstrumentSpec
 from strategy.base import BaseStrategy, Signal, SignalDirection
 from strategy.momentum import AdaptiveMomentumStrategy
+from strategy.orderbook_features import OrderbookFeatureEngine, OrderbookFeatures
 from strategy.gold_trend import GoldTrendStrategy
 from strategy.filters import MarketRegime, SessionManager, SessionPhase
 from risk.manager import RiskManager
@@ -62,6 +63,8 @@ class InstrumentPipeline:
     indicator_engine: IndicatorEngine = field(default=None)
     strategy: BaseStrategy = field(default=None)
     snapshot: MarketSnapshot = field(default_factory=MarketSnapshot)
+    orderbook_engine: OrderbookFeatureEngine = field(default=None)
+    orderbook_features: OrderbookFeatures = field(default_factory=OrderbookFeatures)
     # 多時框指標引擎
     indicator_engine_5m: IndicatorEngine = field(default=None)
     indicator_engine_15m: IndicatorEngine = field(default=None)
@@ -73,6 +76,8 @@ class InstrumentPipeline:
             self.aggregator = TickAggregator(intervals=[1, 5, 15])
         if self.indicator_engine is None:
             self.indicator_engine = IndicatorEngine(lookback_period=200)
+        if self.orderbook_engine is None:
+            self.orderbook_engine = OrderbookFeatureEngine()
         if self.indicator_engine_5m is None:
             self.indicator_engine_5m = IndicatorEngine(lookback_period=200)
         if self.indicator_engine_15m is None:
@@ -154,8 +159,8 @@ class TradingEngine:
 
         env_path = PROJECT_ROOT / ".env"
         if env_path.exists():
-            load_dotenv(env_path, override=False)
-            logger.info("[Config] .env loaded")
+            load_dotenv(env_path, override=True)
+            logger.info("[Config] .env loaded with override=True")
 
         # CLI 參數優先
         if _cli_mode:
@@ -163,8 +168,9 @@ class TradingEngine:
         if _cli_risk:
             os.environ["RISK_PROFILE"] = _cli_risk
 
-        self.trading_mode = os.getenv("TRADING_MODE", "simulation")
-        self.risk_profile = os.getenv("RISK_PROFILE", "balanced")
+        self.trading_mode = os.getenv("TRADING_MODE", "simulation").strip().lower()
+        self.risk_profile = os.getenv("RISK_PROFILE", "balanced").strip().lower()
+        logger.info(f"[Config] Mode: '{self.trading_mode}', Risk: '{self.risk_profile}'")
 
         # ---- 解析商品列表 ----
         instruments_str = os.getenv("INSTRUMENTS", "").strip()
@@ -731,6 +737,8 @@ class TradingEngine:
 
         # 更新聚合器
         pipeline.aggregator.on_tick(tick)
+        pipeline.orderbook_features = pipeline.orderbook_engine.update(tick)
+        self._apply_orderbook_snapshot(pipeline.snapshot, pipeline.orderbook_features)
 
         # 更新持倉追蹤
         self.position_manager.update_price(instrument, tick.price)
@@ -795,6 +803,7 @@ class TradingEngine:
             return
 
         pipeline.snapshot = pipeline.indicator_engine.update(df)
+        self._apply_orderbook_snapshot(pipeline.snapshot, pipeline.orderbook_features)
 
         # 更新向後相容
         if instrument == self.instruments[0]:
@@ -879,6 +888,8 @@ class TradingEngine:
 
         # 再檢查進場
         if pos and pos.is_flat:
+            if hasattr(pipeline.strategy, 'update_orderbook_features'):
+                pipeline.strategy.update_orderbook_features(pipeline.orderbook_features)
             entry_signal = pipeline.strategy.on_kbar(
                 kbar, pipeline.snapshot,
                 snapshot_5m=pipeline.snapshot_5m,
@@ -1266,6 +1277,20 @@ class TradingEngine:
             except Exception:
                 pass
 
+    @staticmethod
+    def _apply_orderbook_snapshot(snapshot: MarketSnapshot, features: OrderbookFeatures):
+        """將 orderbook 特徵寫入 MarketSnapshot，供策略與 dashboard 讀取"""
+        if not snapshot or not features:
+            return
+        snapshot.spread = features.spread
+        snapshot.mid_price = features.mid_price
+        snapshot.bid_ask_pressure = features.bid_ask_pressure
+        snapshot.pressure_bias = features.pressure_bias
+        snapshot.microprice_proxy = features.microprice_proxy
+        snapshot.orderbook_ready = features.orderbook_ready
+        snapshot.last_bid_price = features.last_bid_price
+        snapshot.last_ask_price = features.last_ask_price
+
     # ============================================================
     # Intelligence 回調
     # ============================================================
@@ -1333,6 +1358,9 @@ class TradingEngine:
                     "ema20": _safe_round(pipeline.snapshot.ema20) if pipeline else 0,
                     "ema60": _safe_round(pipeline.snapshot.ema60) if pipeline else 0,
                     "ema200": _safe_round(pipeline.snapshot.ema200) if pipeline and hasattr(pipeline.snapshot, 'ema200') and pipeline.snapshot.ema200 else 0,
+                    "spread": _safe_round(pipeline.snapshot.spread) if pipeline else 0,
+                    "pressure_bias": pipeline.snapshot.pressure_bias if pipeline else "neutral",
+                    "orderbook_ready": pipeline.snapshot.orderbook_ready if pipeline else False,
                 },
                 "strategy": pipeline.strategy.get_parameters() if pipeline else {},
             }

@@ -13,7 +13,10 @@ from datetime import datetime, date, timedelta
 from typing import Optional, Callable
 
 import requests
+import urllib3
 from loguru import logger
+
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 
 from intelligence.models import (
@@ -189,6 +192,7 @@ class DataCollector:
                     data={"queryDate": date_str, "queryType": "1"},
                     headers=HEADERS,
                     timeout=15,
+                    verify=False,
                 )
                 resp.raise_for_status()
 
@@ -267,7 +271,7 @@ class DataCollector:
                 date_str = query_date.strftime("%Y%m%d")
                 url = f"{TWSE_BASE}/fund/BFI82U?date={date_str}&response=json"
 
-                resp = requests.get(url, headers=HEADERS, timeout=15)
+                resp = requests.get(url, headers=HEADERS, timeout=15, verify=False)
                 resp.raise_for_status()
                 data = resp.json()
 

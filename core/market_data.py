@@ -43,6 +43,16 @@ class MarketSnapshot:
     price: float = 0.0
     timestamp: datetime = field(default_factory=datetime.now)
 
+    # L1 orderbook 特徵
+    spread: float = 0.0
+    mid_price: float = 0.0
+    bid_ask_pressure: float = 0.0
+    pressure_bias: str = "neutral"
+    microprice_proxy: float = 0.0
+    orderbook_ready: bool = False
+    last_bid_price: float = 0.0
+    last_ask_price: float = 0.0
+
     # 均線
     ema5: float = 0.0
     ema10: float = 0.0

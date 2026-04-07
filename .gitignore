@@ -29,3 +29,8 @@ venv/
 .DS_Store
 Thumbs.db
 nul
+
+#everything-claude-code
+everything-claude-code/
+AGENTS.md
+GEMINI.md

@@ -59,10 +59,11 @@ class BacktestReport:
         total_return = (final - initial) / initial
         annualized = (1 + total_return) ** (self.TRADING_DAYS_PER_YEAR / max(trading_days, 1)) - 1
 
-        return {
+        metrics = {
             "期間": f"{self.result.start_date} ~ {self.result.end_date}",
             "交易天數": trading_days,
             "K棒總數": self.result.total_bars,
+            "Orderbook模式": "開啟" if self.result.orderbook_enabled else "關閉",
             "初始資金": f"{initial:,.0f} 元",
             "最終資金": f"{final:,.0f} 元",
             "總損益": f"{final - initial:+,.0f} 元",
@@ -86,6 +87,17 @@ class BacktestReport:
             "最大連續虧損": f"{self._max_consecutive_losses(trades)} 筆",
             "平均持倉時間": f"{sum(t['bars_held'] for t in trades) / len(trades):.1f} 根K棒",
         }
+
+        if self.result.orderbook_enabled and self.result.orderbook_metrics:
+            metrics["  "] = ""
+            metrics["Orderbook檢查次數"] = self.result.orderbook_metrics.get("entry_checks", 0)
+            metrics["Orderbook放行"] = self.result.orderbook_metrics.get("entry_allowed", 0)
+            metrics["Orderbook拒絕"] = self.result.orderbook_metrics.get("entry_rejected", 0)
+            metrics["Fallback放行"] = self.result.orderbook_metrics.get("fallback_allowed", 0)
+            metrics["檢查時平均Spread"] = f"{self.result.orderbook_metrics.get('avg_spread_checked', 0):.2f}"
+            metrics["進場時平均Spread"] = f"{self.result.orderbook_metrics.get('avg_spread_at_entry', 0):.2f}"
+
+        return metrics
 
     def print_report(self):
         """終端機格式化輸出"""
@@ -127,6 +139,8 @@ class BacktestReport:
             "trades": self.result.trades,
             "equity_curve": self.result.equity_curve[::max(1, len(self.result.equity_curve) // 500)],
             "daily_pnl": self.result.daily_pnl,
+            "orderbook_enabled": self.result.orderbook_enabled,
+            "orderbook_metrics": self.result.orderbook_metrics,
         }
 
     # ---- 內部計算 ----
