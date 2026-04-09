@@ -19,10 +19,15 @@ from strategy.momentum import AdaptiveMomentumStrategy
 from core.market_data import KBar, MarketSnapshot
 from core.position import Position
 import risk.manager as risk_manager_module
-from scripts.backtest_runner import ORDERBOOK_PROFILES, _build_strategy_factory, _filter_data_by_date
+from scripts.backtest_runner import (
+    ORDERBOOK_PROFILES,
+    _build_strategy_factory,
+    _filter_data_by_date,
+    _resolve_orderbook_profile,
+)
 
 
-class TestOrderbookBacktestStrategy(BaseStrategy):
+class OrderbookBacktestTestStrategy(BaseStrategy):
     """測試用簡化策略：固定做多，並支援 orderbook filter"""
 
     def __init__(self):
@@ -109,7 +114,7 @@ class TestBacktestEngineOrderbook(unittest.TestCase):
         try:
             result = engine.run(
                 data=self._build_data(),
-                strategy=TestOrderbookBacktestStrategy(),
+                strategy=OrderbookBacktestTestStrategy(),
                 risk_profile="balanced",
                 use_orderbook_filter=False,
             )
@@ -130,7 +135,7 @@ class TestBacktestEngineOrderbook(unittest.TestCase):
 
         results = engine.run_orderbook_comparison(
             data=self._build_data(),
-            strategy_factory=TestOrderbookBacktestStrategy,
+            strategy_factory=OrderbookBacktestTestStrategy,
             risk_profile="balanced",
         )
 
@@ -151,13 +156,13 @@ class TestBacktestEngineOrderbook(unittest.TestCase):
 
         baseline = engine.run(
             data=self._build_data(),
-            strategy=TestOrderbookBacktestStrategy(),
+            strategy=OrderbookBacktestTestStrategy(),
             risk_profile="balanced",
             use_orderbook_filter=False,
         )
         filtered = engine.run(
             data=self._build_data(),
-            strategy=TestOrderbookBacktestStrategy(),
+            strategy=OrderbookBacktestTestStrategy(),
             risk_profile="balanced",
             use_orderbook_filter=True,
         )
@@ -219,6 +224,15 @@ class TestBacktestRunnerHelpers(unittest.TestCase):
             strategy.orderbook_filter.pressure_min_score,
             ORDERBOOK_PROFILES["A5"]["pressure_min_score"],
         )
+
+    def test_resolve_orderbook_profile_uses_fixed_mapping(self):
+        self.assertEqual(_resolve_orderbook_profile("conservative", None), "A1")
+        self.assertEqual(_resolve_orderbook_profile("balanced", None), "A3")
+        self.assertEqual(_resolve_orderbook_profile("aggressive", None), "A4")
+        self.assertEqual(_resolve_orderbook_profile("dangerous", None), "A5")
+
+    def test_resolve_orderbook_profile_prefers_explicit_override(self):
+        self.assertEqual(_resolve_orderbook_profile("conservative", "A4"), "A4")
 
 
 if __name__ == "__main__":

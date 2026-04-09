@@ -1,0 +1,498 @@
+<div id="app" class="app">
+
+  <!-- ====== HEADER ====== -->
+  <div class="header">
+    <div class="header-left">
+      <div class="logo">&#9889; Ultra<span>Trader</span></div>
+      <div :class="['status-badge', statusClass]">
+        <div class="status-dot"></div>
+        {{ statusText }}
+      </div>
+      <!-- 引擎控制 (最重要的按鈕放在最顯眼的位置) -->
+      <button v-if="state.engine_state !== 'running' && state.engine_state !== 'paused'"
+              class="engine-btn engine-btn-start" @click="engineAction('start')">
+        &#9654; 啟動引擎
+      </button>
+      <button v-if="state.engine_state === 'running'"
+              class="engine-btn engine-btn-pause" @click="engineAction('pause')">
+        &#9208; 暫停
+      </button>
+      <button v-if="state.engine_state === 'paused'"
+              class="engine-btn engine-btn-start" @click="engineAction('resume')">
+        &#9654; 恢復
+      </button>
+      <button v-if="state.engine_state === 'running' || state.engine_state === 'paused'"
+              class="engine-btn engine-btn-stop" @click="engineAction('stop')">
+        &#9632; 停止
+      </button>
+      <!-- 自動交易切換 -->
+      <button v-if="state.engine_state === 'running'"
+              :class="['engine-btn', autoTradeClass]"
+              @click="toggleAutoTrade()">
+        {{ autoTradeText }}
+      </button>
+    </div>
+
+    <div class="instrument-tabs">
+      <button v-for="inst in instrumentList" :key="inst"
+              :class="['instrument-tab', activeInstrument === inst ? 'active' : '']"
+              @click="switchInstrument(inst)">
+        {{ inst }}
+        <span class="tab-price">{{ formatPrice(getInstData(inst).price) }}</span>
+        <span v-if="getInstData(inst).position?.side === 'long'" class="tab-pos tab-pos-long"></span>
+        <span v-if="getInstData(inst).position?.side === 'short'" class="tab-pos tab-pos-short"></span>
+      </button>
+    </div>
+
+    <div class="header-right">
+      <button v-for="m in modes" :key="m.key"
+              :class="['mode-btn', state.trading_mode === m.key ? 'mode-active' : '', m.key === 'live' ? 'mode-btn-live' : '']"
+              :style="state.trading_mode === m.key ? m.activeStyle : ''"
+              @click="switchMode(m.key)">
+        {{ m.icon }} {{ m.label }}
+      </button>
+      <div class="tick-badge" v-if="tickCount > 0">
+        &#9889; {{ tickCount.toLocaleString() }}
+      </div>
+      <div class="font-scale-controls" title="字體大小">
+        <button class="font-scale-btn" @click="decreaseFont" aria-label="字體縮小">A-</button>
+        <button class="font-scale-btn font-scale-value" @click="resetFontScale" aria-label="字體重置">
+          {{ Math.round(uiFontScale * 100) }}%
+        </button>
+        <button class="font-scale-btn" @click="increaseFont" aria-label="字體放大">A+</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ====== 帳戶快覽 ====== -->
+  <div class="account-strip">
+    <div class="account-chip highlight">
+      <div class="chip-left">
+        <div class="chip-label">權益數</div>
+        <div class="chip-value" style="color: var(--purple);">{{ formatNumber(realAccount.equity) }}</div>
+      </div>
+      <div class="chip-right">
+        <div class="chip-sub">餘額 {{ formatNumber(realAccount.balance) }}</div>
+      </div>
+    </div>
+    <div class="account-chip">
+      <div class="chip-left">
+        <div class="chip-label">可用保證金</div>
+        <div class="chip-value">{{ formatNumber(realAccount.margin_available) }}</div>
+      </div>
+      <div class="chip-right">
+        <div class="chip-sub">已用 {{ formatNumber(realAccount.margin_used) }}</div>
+      </div>
+    </div>
+    <div class="account-chip">
+      <div class="chip-left">
+        <div class="chip-label">浮動損益</div>
+        <div class="chip-value" :class="liveTotalPnl >= 0 ? 'text-green' : 'text-red'">
+          {{ liveTotalPnl >= 0 ? '+' : '' }}{{ formatNumber(liveTotalPnl) }}
+        </div>
+      </div>
+    </div>
+    <div class="account-chip">
+      <div class="chip-left">
+        <div class="chip-label">今日損益</div>
+        <div class="chip-value" :class="(state.daily_pnl || 0) >= 0 ? 'text-green' : 'text-red'">
+          {{ (state.daily_pnl || 0) >= 0 ? '+' : '' }}{{ formatNumber(state.daily_pnl || 0) }}
+        </div>
+      </div>
+      <div class="chip-right">
+        <div class="chip-sub">{{ state.daily_trades || 0 }} 筆</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ====== 真實持倉（永豐） ====== -->
+  <div v-if="state.trading_mode !== 'paper' && realPositions.length > 0" class="real-pos-strip">
+    <div v-for="(p, i) in realPositions" :key="i"
+         class="real-pos-chip"
+         :style="{
+           background: p.direction.includes('Sell') ? 'rgba(239,68,68,0.06)' : 'rgba(16,185,129,0.06)',
+           border: '1px solid ' + (p.direction.includes('Sell') ? 'rgba(239,68,68,0.2)' : 'rgba(16,185,129,0.2)'),
+         }">
+      <span :style="{ fontWeight: 800, color: p.direction.includes('Sell') ? 'var(--red)' : 'var(--green)' }">
+        {{ p.direction.includes('Sell') ? 'SHORT' : 'LONG' }}
+      </span>
+      <span style="font-weight: 700;">{{ p.code }}</span>
+      <span style="color: var(--text-muted);">x{{ p.quantity }}</span>
+      <span style="color: var(--text-secondary);">
+        {{ formatPrice(p.price) }} &#8594; {{ formatPrice(realPosLivePrice(p)) }}
+      </span>
+      <span :style="{ fontSize: '16px', fontWeight: 800, color: realPosLivePnl(p) >= 0 ? 'var(--green)' : 'var(--red)', marginLeft: 'auto' }">
+        {{ realPosLivePnl(p) >= 0 ? '+' : '' }}{{ formatNumber(realPosLivePnl(p)) }}
+      </span>
+      <button @click="closeRealPosition(p)"
+              style="padding: 4px 10px; border-radius: 5px; border: 1px solid rgba(239,68,68,0.3); background: rgba(239,68,68,0.1); color: var(--red); font-size: calc(11px * var(--uifs)); font-weight: 700; cursor: pointer;">
+        平倉
+      </button>
+    </div>
+  </div>
+
+  <!-- ====== Paper 模擬持倉 ====== -->
+  <div v-for="inst in instrumentList" :key="'paper-'+inst">
+    <div v-if="getInstData(inst).position?.side === 'long' || getInstData(inst).position?.side === 'short'"
+         style="margin: 4px 10px; padding: 14px 18px; border-radius: 12px; display: flex; align-items: center; gap: 16px; font-family: var(--font-mono); animation: pulse 3s infinite;"
+         :style="{
+           background: getInstData(inst).position.side === 'short' ? 'rgba(239,68,68,0.08)' : 'rgba(16,185,129,0.08)',
+           border: '2px solid ' + (getInstData(inst).position.side === 'short' ? 'rgba(239,68,68,0.35)' : 'rgba(16,185,129,0.35)'),
+         }">
+      <!-- 方向標籤 -->
+      <div style="font-size: calc(28px * var(--uifs)); font-weight: 900; letter-spacing: 2px; min-width: 90px;"
+           :style="{ color: getInstData(inst).position.side === 'short' ? 'var(--red)' : 'var(--green)' }">
+        {{ getInstData(inst).position.side === 'short' ? '&#9660; 做空' : '&#9650; 做多' }}
+      </div>
+      <!-- 商品 -->
+      <div>
+        <div style="font-size: calc(18px * var(--uifs)); font-weight: 800;">{{ inst }}</div>
+        <div style="font-size: calc(10px * var(--uifs)); color: var(--text-muted);">
+          PAPER 模擬
+        </div>
+      </div>
+      <!-- 進場資訊 -->
+      <div style="text-align: center;">
+        <div style="font-size: calc(10px * var(--uifs)); color: var(--text-muted);">進場價</div>
+        <div style="font-size: calc(16px * var(--uifs)); font-weight: 800;">{{ formatPrice(getInstData(inst).position.entry_price) }}</div>
+        <div style="font-size: calc(9px * var(--uifs)); color: var(--text-muted);">
+          {{ getInstData(inst).position.entry_time ? new Date(getInstData(inst).position.entry_time).toLocaleTimeString('zh-TW') : '-' }}
+        </div>
+      </div>
+      <!-- 現價 -->
+      <div style="text-align: center;">
+        <div style="font-size: calc(10px * var(--uifs)); color: var(--text-muted);">現價</div>
+        <div style="font-size: calc(16px * var(--uifs)); font-weight: 800;">{{ formatPrice(getInstData(inst).price) }}</div>
+      </div>
+      <!-- 箭頭 -->
+      <div style="font-size: calc(20px * var(--uifs)); color: var(--text-muted);">&#8594;</div>
+      <!-- 停損 -->
+      <div style="text-align: center;">
+        <div style="font-size: calc(10px * var(--uifs)); color: var(--red);">停損</div>
+        <div style="font-size: calc(14px * var(--uifs)); font-weight: 700; color: var(--red);">{{ formatPrice(getInstData(inst).position.stop_loss) }}</div>
+        <div style="font-size: calc(9px * var(--uifs)); color: var(--text-muted);">{{ getDistancePoints(getInstData(inst).position.stop_loss) }} 點</div>
+      </div>
+      <!-- 停利 -->
+      <div style="text-align: center;">
+        <div style="font-size: calc(10px * var(--uifs)); color: var(--green);">停利</div>
+        <div style="font-size: calc(14px * var(--uifs)); font-weight: 700; color: var(--green);">{{ formatPrice(getInstData(inst).position.take_profit) }}</div>
+        <div style="font-size: calc(9px * var(--uifs)); color: var(--text-muted);">{{ getDistancePoints(getInstData(inst).position.take_profit) }} 點</div>
+      </div>
+      <!-- 浮動損益（最大最醒目） -->
+      <div style="margin-left: auto; text-align: right;">
+        <div style="font-size: calc(10px * var(--uifs)); color: var(--text-muted);">浮動損益</div>
+        <div style="font-size: calc(32px * var(--uifs)); font-weight: 900; line-height: 1;"
+             :class="(getInstData(inst).position.unrealized_pnl || 0) >= 0 ? 'text-green' : 'text-red'">
+          {{ (getInstData(inst).position.unrealized_pnl || 0) >= 0 ? '+' : '' }}{{ formatNumber(getInstData(inst).position.unrealized_pnl || 0) }} 元
+        </div>
+        <div style="font-size: calc(10px * var(--uifs)); color: var(--text-muted); margin-top: 2px;">
+          已持有 {{ getInstData(inst).position.bars_since_entry || 0 }} 根 K 棒
+        </div>
+      </div>
+      <!-- 平倉按鈕 -->
+      <button @click="manualClose(inst)"
+              style="padding: 10px 20px; border-radius: 8px; border: 2px solid rgba(245,158,11,0.5); background: rgba(245,158,11,0.15); color: var(--amber); font-size: calc(14px * var(--uifs)); font-weight: 900; cursor: pointer; font-family: var(--font-mono);">
+        &#10005; 平倉
+      </button>
+    </div>
+  </div>
+
+  <!-- ====== 主內容：圖表 + 側面板 ====== -->
+  <div class="main-grid">
+
+    <!-- 左：K 線圖（最重要） -->
+    <div class="chart-card">
+      <div class="chart-header">
+        <div class="chart-title">
+          {{ activeInstrument }}
+          <span style="font-size: calc(18px * var(--uifs)); font-weight: 800; margin-left: 8px; font-family: var(--font-mono);"
+                :class="getInstPriceClass(activeInstrument)">
+            {{ formatPrice(getInstData(activeInstrument).price) }}
+          </span>
+          <span style="font-size: calc(11px * var(--uifs)); margin-left: 4px;" :class="getInstPriceClass(activeInstrument)">
+            {{ getInstPriceChange(activeInstrument) }}
+          </span>
+        </div>
+        <div style="display: flex; gap: 8px; align-items: center;">
+          <!-- 均線圖例 -->
+          <div style="display: flex; gap: 8px; font-size: calc(10px * var(--uifs)); font-family: var(--font-mono); color: var(--text-muted);">
+            <span><span style="display: inline-block; width: 12px; height: 2px; background: #4DA3FF; vertical-align: middle; margin-right: 3px;"></span>EMA20</span>
+            <span><span style="display: inline-block; width: 12px; height: 2px; background: #F59E0B; vertical-align: middle; margin-right: 3px;"></span>EMA60</span>
+            <span><span style="display: inline-block; width: 12px; height: 2px; background: #E879F9; vertical-align: middle; margin-right: 3px;"></span>EMA200</span>
+          </div>
+          <div style="display: flex; gap: 4px;">
+            <button v-for="tf in [1, 5, 15]" :key="tf"
+                    :class="['tf-btn', timeframe === tf ? 'active' : '']"
+                    @click="switchTimeframe(tf)">
+              {{ tf }}m
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- ====== 你現在該做什麼（一句話） ====== -->
+      <div v-if="activeInstrument" style="display: flex; align-items: center; gap: 12px; padding: 12px 16px; border-radius: 10px; margin-bottom: 6px; font-family: var(--font-mono);"
+           :style="{ background: getInstruction(activeInstrument).bg, border: '2px solid ' + getInstruction(activeInstrument).borderColor }">
+        <span style="font-size: calc(40px * var(--uifs)); line-height: 1;">{{ getInstruction(activeInstrument).icon }}</span>
+        <div style="flex: 1;">
+          <div style="font-size: calc(24px * var(--uifs)); font-weight: 900; letter-spacing: 1px;" :style="{ color: getInstruction(activeInstrument).color }">
+            {{ getInstruction(activeInstrument).text }}
+          </div>
+          <div style="font-size: calc(12px * var(--uifs)); color: var(--text-secondary); margin-top: 2px;">
+            {{ getInstruction(activeInstrument).reason }}
+          </div>
+        </div>
+        <!-- 有持倉：損益 + 停損停利距離 -->
+        <div v-if="activeInstData.position?.side !== 'flat'" style="text-align: right; font-family: var(--font-mono);">
+          <div style="font-size: calc(30px * var(--uifs)); font-weight: 900; line-height: 1;"
+               :class="(activeInstData.position?.unrealized_pnl || 0) >= 0 ? 'text-green' : 'text-red'">
+            {{ (activeInstData.position?.unrealized_pnl || 0) >= 0 ? '+' : '' }}{{ formatNumber(activeInstData.position?.unrealized_pnl || 0) }}
+          </div>
+          <div style="font-size: calc(10px * var(--uifs)); color: var(--text-muted); margin-top: 2px;">
+            停損 <span style="color: var(--red);">{{ getDistancePoints(activeInstData.position.stop_loss) }}點</span>
+            停利 <span style="color: var(--green);">{{ getDistancePoints(activeInstData.position.take_profit) }}點</span>
+          </div>
+        </div>
+        <!-- 無持倉：預估 -->
+        <div v-if="activeInstData.position?.side === 'flat' && activeInstData.snapshot?.atr > 0" style="text-align: right; font-family: var(--font-mono);">
+          <div style="font-size: calc(12px * var(--uifs));">
+            <span style="color: var(--red);">虧 -{{ formatNumber(getEstLoss(activeInstrument)) }}</span>
+            <span style="color: var(--green); margin-left: 6px;">利 +{{ formatNumber(getEstProfit(activeInstrument)) }}</span>
+          </div>
+          <div style="font-size: calc(14px * var(--uifs)); font-weight: 800; color: var(--amber); margin-top: 2px;">
+            風報比 1:{{ getEstRR(activeInstrument) }}
+          </div>
+        </div>
+      </div>
+
+      <!-- 畫線工具列 -->
+      <div style="display: flex; align-items: center; gap: 6px; margin-bottom: 4px; font-family: var(--font-mono);">
+        <button :class="['tf-btn', drawingMode === 'trendline' ? 'active' : '']"
+                @click="toggleDrawing('trendline')" title="趨勢線 (T)"
+                style="font-size: calc(11px * var(--uifs)); padding: 3px 8px;">
+          &#x2571; 趨勢線
+        </button>
+        <button :class="['tf-btn', drawingMode === 'hline' ? 'active' : '']"
+                @click="toggleDrawing('hline')" title="水平線 (H)"
+                style="font-size: calc(11px * var(--uifs)); padding: 3px 8px;">
+          &#x2500; 水平線
+        </button>
+        <button class="tf-btn" @click="promptHlinePrice()" title="輸入點位 (P)"
+                style="font-size: calc(11px * var(--uifs)); padding: 3px 8px;">
+          &#x23CD; 輸入點位
+        </button>
+        <input type="color" v-model="drawingColor"
+               style="width: 24px; height: 24px; border: none; background: transparent; cursor: pointer; padding: 0;"
+               title="畫線顏色">
+        <select v-model="drawingWidth" style="background: var(--bg-card); color: var(--text-primary); border: 1px solid var(--border); border-radius: 4px; font-size: calc(11px * var(--uifs)); padding: 2px 4px;">
+          <option :value="1">細</option>
+          <option :value="2">中</option>
+          <option :value="3">粗</option>
+        </select>
+        <button v-if="drawnLines.length > 0" class="tf-btn" @click="undoLastLine()" style="font-size: calc(11px * var(--uifs)); padding: 3px 8px;" title="復原">
+          &#x21A9; 復原
+        </button>
+        <button v-if="drawnLines.length > 0" class="tf-btn" @click="clearAllLines()" style="font-size: calc(11px * var(--uifs)); padding: 3px 8px; color: #EF4444;" title="清除全部">
+          &#x2715; 清除
+        </button>
+        <span v-if="drawingMode" style="font-size: calc(10px * var(--uifs)); color: var(--text-muted);">
+          {{ drawingMode === 'trendline' ? '點擊起點，再點終點' : '點擊設定水平線位置' }} | ESC 取消
+        </span>
+        <span v-if="selectedDrawing !== null" style="font-size: calc(10px * var(--uifs)); color: var(--amber);">
+          已選取線條 — Delete 刪除 | 拖曳移動 | ESC 取消選取
+        </span>
+      </div>
+
+      <!-- K 線圖 -->
+      <div id="chart-container" style="cursor: crosshair;"></div>
+
+      <!-- ====== 操作按鈕 ====== -->
+      <div style="margin-top: 8px;" v-if="activeInstrument">
+        <!-- 無持倉 -->
+        <div v-if="activeInstData.position?.side === 'flat'" style="display: flex; gap: 6px;">
+          <button class="action-btn action-btn-buy" @click="manualOpen(activeInstrument, 'BUY')"
+                  :style="getRecommended(activeInstrument) === 'BUY' ? 'box-shadow: 0 0 24px rgba(16,185,129,0.6); border-color: #10B981; border-width: 3px;' : 'opacity: 0.5;'">
+            <span v-if="getRecommended(activeInstrument) === 'BUY'" style="font-size: calc(12px * var(--uifs)); background: #10B981; color: #000; padding: 2px 8px; border-radius: 4px; margin-right: 8px; font-weight: 900;">&#9733; 推薦</span>
+            &#9650; 做多 {{ activeInstrument }}
+          </button>
+          <button class="action-btn action-btn-sell" @click="manualOpen(activeInstrument, 'SELL')"
+                  :style="getRecommended(activeInstrument) === 'SELL' ? 'box-shadow: 0 0 24px rgba(239,68,68,0.6); border-color: #EF4444; border-width: 3px;' : 'opacity: 0.5;'">
+            <span v-if="getRecommended(activeInstrument) === 'SELL'" style="font-size: calc(12px * var(--uifs)); background: #EF4444; color: #fff; padding: 2px 8px; border-radius: 4px; margin-right: 8px; font-weight: 900;">&#9733; 推薦</span>
+            &#9660; 做空 {{ activeInstrument }}
+          </button>
+        </div>
+        <!-- 有持倉 -->
+        <div v-else style="display: flex; gap: 6px;">
+          <button class="action-btn action-btn-close" @click="manualClose(activeInstrument)"
+                  :style="getRecommended(activeInstrument) === 'CLOSE' ? 'box-shadow: 0 0 24px rgba(245,158,11,0.6); border-width: 3px; flex: 2;' : 'opacity: 0.5; flex: 1;'">
+            <span v-if="getRecommended(activeInstrument) === 'CLOSE'" style="font-size: calc(12px * var(--uifs)); background: #F59E0B; color: #000; padding: 2px 8px; border-radius: 4px; margin-right: 8px; font-weight: 900;">&#9733; 建議平倉</span>
+            &#10005; 平倉 {{ activeInstrument }}
+            ({{ activeInstData.position?.side === 'long' ? '多' : '空' }}
+             {{ (activeInstData.position?.unrealized_pnl || 0) >= 0 ? '+' : '' }}{{ formatNumber(activeInstData.position?.unrealized_pnl || 0) }} 元)
+          </button>
+          <div v-if="getRecommended(activeInstrument) === 'HOLD'"
+               style="flex: 1; display: flex; align-items: center; justify-content: center; padding: 8px 16px; border-radius: 8px; background: rgba(138,92,255,0.15); border: 2px solid rgba(138,92,255,0.4); color: #A78BFA; font-size: calc(16px * var(--uifs)); font-weight: 900; font-family: var(--font-mono); box-shadow: 0 0 16px rgba(138,92,255,0.3);">
+            &#9733; 不要動
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 右：側面板 -->
+    <div class="side-panel">
+
+      <!-- 紅綠燈 -->
+      <div class="panel-card" v-if="activeInstrument">
+        <div :class="['signal-light', 'signal-light-' + getSignalLight(activeInstrument).type]">
+          <span :class="['signal-dot', 'signal-dot-' + getSignalLight(activeInstrument).type]"></span>
+          <span>{{ getSignalLight(activeInstrument).label }}</span>
+          <span class="signal-reason">{{ getSignalLight(activeInstrument).reason }}</span>
+        </div>
+        <div style="margin-top: 6px; font-size: calc(10px * var(--uifs)); font-family: var(--font-mono); color: var(--text-muted);">
+          RSI {{ activeInstData.snapshot?.rsi?.toFixed(0) || '-' }} |
+          ADX {{ activeInstData.snapshot?.adx?.toFixed(0) || '-' }} |
+          ATR {{ activeInstData.snapshot?.atr?.toFixed(1) || '-' }}
+        </div>
+      </div>
+
+      <!-- 策略參數 -->
+      <div class="panel-card">
+        <div class="panel-title strategy-title-row">
+          <span>&#9881; 策略</span>
+          <a class="backtest-link-btn" href="/backtest" target="_blank" rel="noopener noreferrer">
+            &#128202; 回測
+          </a>
+        </div>
+        <div style="margin-bottom: 6px;">
+          <div style="font-size: calc(9px * var(--uifs)); color: var(--text-muted); margin-bottom: 3px;">風險等級</div>
+          <div class="risk-row">
+            <button v-for="r in riskProfiles" :key="r.key"
+                    :class="['risk-btn', state.risk_profile === r.key ? 'active' : '']"
+                    @click="setRiskProfile(r.key)">
+              {{ r.icon }} {{ r.label }}
+            </button>
+          </div>
+        </div>
+        <div style="font-size: calc(10px * var(--uifs)); font-family: var(--font-mono);">
+          <div style="display: flex; justify-content: space-between; padding: 3px 0; border-bottom: 1px solid rgba(255,255,255,0.04);">
+            <span style="color: var(--text-muted);">策略</span>
+            <span style="color: var(--purple);">{{ activeInstData.strategy?.strategy || '-' }}</span>
+          </div>
+          <div style="display: flex; justify-content: space-between; padding: 3px 0; border-bottom: 1px solid rgba(255,255,255,0.04);">
+            <span style="color: var(--text-muted);">市場</span>
+            <span>{{ activeInstData.strategy?.regime || '-' }}</span>
+          </div>
+          <div style="display: flex; justify-content: space-between; padding: 3px 0; border-bottom: 1px solid rgba(255,255,255,0.04);">
+            <span style="color: var(--text-muted);">停損</span>
+            <span style="color: var(--red);">{{ activeInstData.strategy?.adaptive_params?.stop_loss_multiplier || '-' }}x ATR</span>
+          </div>
+          <div style="display: flex; justify-content: space-between; padding: 3px 0; border-bottom: 1px solid rgba(255,255,255,0.04);">
+            <span style="color: var(--text-muted);">移停觸發</span>
+            <span style="color: var(--amber);">{{ activeInstData.strategy?.adaptive_params?.trailing_trigger || '-' }}x ATR</span>
+          </div>
+          <div style="display: flex; justify-content: space-between; padding: 3px 0; border-bottom: 1px solid rgba(255,255,255,0.04);">
+            <span style="color: var(--text-muted);">訊號門檻</span>
+            <span>{{ activeInstData.strategy?.adaptive_params?.min_signal_strength || '-' }}</span>
+          </div>
+          <div style="display: flex; justify-content: space-between; padding: 3px 0;">
+            <span style="color: var(--text-muted);">冷卻</span>
+            <span>{{ activeInstData.strategy?.cooldown_remaining || 0 }} bars</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Orderbook 監控 -->
+      <div class="panel-card">
+        <div class="panel-title">&#128269; Orderbook</div>
+        <div style="font-size: calc(10px * var(--uifs)); font-family: var(--font-mono);">
+          <div style="display: flex; justify-content: space-between; padding: 3px 0; border-bottom: 1px solid rgba(255,255,255,0.04);">
+            <span style="color: var(--text-muted);">ready</span>
+            <span :style="{ color: activeInstData.snapshot?.orderbook_ready ? 'var(--green)' : 'var(--text-muted)', fontWeight: 700 }">
+              {{ activeInstData.snapshot?.orderbook_ready ? 'YES' : 'NO' }}
+            </span>
+          </div>
+          <div style="display: flex; justify-content: space-between; padding: 3px 0; border-bottom: 1px solid rgba(255,255,255,0.04);">
+            <span style="color: var(--text-muted);">spread</span>
+            <span style="font-weight: 700;">
+              {{ activeInstData.snapshot?.spread?.toFixed ? activeInstData.snapshot.spread.toFixed(1) : (activeInstData.snapshot?.spread ?? '-') }}
+            </span>
+          </div>
+          <div style="display: flex; justify-content: space-between; padding: 3px 0;">
+            <span style="color: var(--text-muted);">pressure_bias</span>
+            <span
+              :style="{
+                fontWeight: 700,
+                color:
+                  activeInstData.snapshot?.pressure_bias === 'bullish'
+                    ? 'var(--green)'
+                    : activeInstData.snapshot?.pressure_bias === 'bearish'
+                      ? 'var(--red)'
+                      : 'var(--amber)'
+              }"
+            >
+              {{ activeInstData.snapshot?.pressure_bias || 'neutral' }}
+            </span>
+          </div>
+        </div>
+      </div>
+
+      <!-- 訊號強度 -->
+      <div class="panel-card">
+        <div class="panel-title">&#128202; 訊號</div>
+        <div class="signal-bar-container">
+          <div class="signal-bar-bg">
+            <div class="signal-bar-fill" :style="signalBarStyle"></div>
+          </div>
+          <span style="font-family: var(--font-mono); font-size: calc(12px * var(--uifs)); font-weight: 700;">{{ signalStrength }}</span>
+        </div>
+      </div>
+
+      <!-- 其他商品 — 建議 + 直接建倉 -->
+      <div class="panel-card" v-for="inst in instrumentList.filter(i => i !== activeInstrument)" :key="'other-'+inst">
+        <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 4px; cursor: pointer;" @click="switchInstrument(inst)">
+          <span style="font-weight: 800; font-size: calc(14px * var(--uifs)); font-family: var(--font-mono);">{{ inst }}</span>
+          <span :class="getInstPriceClass(inst)" style="font-weight: 700; font-size: calc(14px * var(--uifs)); font-family: var(--font-mono);">{{ formatPrice(getInstData(inst).price) }}</span>
+          <span v-if="getInstData(inst).position?.side !== 'flat'" style="margin-left: auto; font-weight: 700;"
+                :class="(getInstData(inst).position?.unrealized_pnl || 0) >= 0 ? 'text-green' : 'text-red'">
+            {{ (getInstData(inst).position?.unrealized_pnl || 0) >= 0 ? '+' : '' }}{{ formatNumber(getInstData(inst).position?.unrealized_pnl || 0) }}
+          </span>
+        </div>
+        <!-- 策略建議條 -->
+        <div style="display: flex; align-items: center; gap: 6px; padding: 5px 8px; border-radius: 6px; margin-bottom: 6px; font-family: var(--font-mono); font-size: calc(11px * var(--uifs));"
+             :style="{ background: getTradeAdvice(inst).bg, border: '1px solid ' + getTradeAdvice(inst).border }">
+          <span style="font-size: calc(16px * var(--uifs));">{{ getTradeAdvice(inst).icon }}</span>
+          <span style="font-weight: 700;" :style="{ color: getTradeAdvice(inst).color }">{{ getTradeAdvice(inst).action }}</span>
+          <span style="color: var(--text-muted); font-size: calc(9px * var(--uifs)); margin-left: auto;">建議</span>
+          <span style="font-weight: 700; font-size: calc(11px * var(--uifs));" :style="{ color: getTradeAdvice(inst).modeColor }">{{ getTradeAdvice(inst).mode }}</span>
+        </div>
+        <!-- 操作按鈕（推薦發光） -->
+        <div v-if="getInstData(inst).position?.side === 'flat'" style="display: flex; gap: 4px;">
+          <button @click.stop="manualOpen(inst, 'BUY')"
+                  :style="'flex:1; padding: 6px; border-radius: 6px; border: 1px solid rgba(16,185,129,0.4); background: rgba(16,185,129,0.1); color: #10B981; font-size: calc(12px * var(--uifs)); font-weight: 700; cursor: pointer; font-family: var(--font-mono);' + (getRecommended(inst) === 'BUY' ? 'box-shadow: 0 0 12px rgba(16,185,129,0.5);' : '')">
+            <span v-if="getRecommended(inst) === 'BUY'" style="font-size: calc(9px * var(--uifs)); background: #10B981; color: #000; padding: 0 4px; border-radius: 2px; margin-right: 3px;">&#9733;</span>
+            &#9650; 做多
+          </button>
+          <button @click.stop="manualOpen(inst, 'SELL')"
+                  :style="'flex:1; padding: 6px; border-radius: 6px; border: 1px solid rgba(239,68,68,0.4); background: rgba(239,68,68,0.1); color: #EF4444; font-size: calc(12px * var(--uifs)); font-weight: 700; cursor: pointer; font-family: var(--font-mono);' + (getRecommended(inst) === 'SELL' ? 'box-shadow: 0 0 12px rgba(239,68,68,0.5);' : '')">
+            <span v-if="getRecommended(inst) === 'SELL'" style="font-size: calc(9px * var(--uifs)); background: #EF4444; color: #fff; padding: 0 4px; border-radius: 2px; margin-right: 3px;">&#9733;</span>
+            &#9660; 做空
+          </button>
+        </div>
+        <div v-else style="display: flex; gap: 4px;">
+          <button @click.stop="manualClose(inst)"
+                  :style="'flex:1; padding: 6px; border-radius: 6px; border: 1px solid rgba(245,158,11,0.4); background: rgba(245,158,11,0.1); color: #F59E0B; font-size: calc(12px * var(--uifs)); font-weight: 700; cursor: pointer; font-family: var(--font-mono);' + (getRecommended(inst) === 'CLOSE' ? 'box-shadow: 0 0 12px rgba(245,158,11,0.5);' : '')">
+            &#10005; 平倉 {{ inst }}
+            ({{ getInstData(inst).position?.side === 'long' ? '多' : '空' }}
+             {{ (getInstData(inst).position?.unrealized_pnl || 0) >= 0 ? '+' : '' }}{{ formatNumber(getInstData(inst).position?.unrealized_pnl || 0) }})
+          </button>
+        </div>
+        <!-- 預估（無持倉時） -->
+        <div v-if="getInstData(inst).position?.side === 'flat' && getInstData(inst).snapshot?.atr > 0"
+             style="margin-top: 4px; font-size: calc(10px * var(--uifs)); font-family: var(--font-mono); color: var(--text-muted);">
+          虧 <span style="color: var(--red);">-{{ formatNumber(getEstLoss(inst)) }}</span> |
+          利 <span style="color: var(--green);">+{{ formatNumber(getEstProfit(inst)) }}</span> |
+          風報比 <span style="color: var(--amber);">1:{{ getEstRR(inst) }}</span>
+        </div>
+      </div>
+
+

@@ -131,6 +131,8 @@ class GoldTrendStrategy(BaseStrategy):
                 snapshot_15m: MarketSnapshot = None) -> Optional[Signal]:
         """K 棒收盤時的決策邏輯（頂尖版）"""
 
+        self._last_signal_strength = 0.0  # 確保每日/每 K 棒初始化，未達條件便歸零顯示
+
         # 0. 盤別檢查
         phase = self._session.get_phase()
         if phase in (SessionPhase.LAST_30, SessionPhase.CLOSING, SessionPhase.CLOSED):
@@ -165,9 +167,9 @@ class GoldTrendStrategy(BaseStrategy):
             # 台指期危機做空，但黃金危機做多（避險資金湧入）
             signal = self._crisis_long_signal(snapshot)
             if signal:
+                self._last_signal_strength = signal.strength
                 if signal.strength < (0.55 + open_boost):
                     return None
-                self._last_signal_strength = signal.strength
                 logger.info(f"[Gold CRISIS LONG] strength: {signal.strength:.2f} | {signal.reason}")
             return signal
 
@@ -182,6 +184,9 @@ class GoldTrendStrategy(BaseStrategy):
         # 8. 正常趨勢 → 多因子訊號（含多時框確認）
         signal = self.signal_generator.generate(snapshot, regime, snapshot_5m, snapshot_15m)
 
+        # 確保即使訊號未達開倉條件，Dashboard 也能顯示即時因子總分
+        self._last_signal_strength = self.signal_generator.latest_total_score
+
         if signal:
             if signal.strength < (self.signal_generator.params.min_signal_strength + open_boost):
                 return None
@@ -193,7 +198,6 @@ class GoldTrendStrategy(BaseStrategy):
                     (round(p, 1), f) for p, f in signal.take_profit_levels
                 ]
             signal.source = "GoldTrend"
-            self._last_signal_strength = signal.strength
             logger.info(
                 f"[Gold Signal] {signal.direction.value} | "
                 f"strength: {signal.strength:.2f} | {signal.reason}"

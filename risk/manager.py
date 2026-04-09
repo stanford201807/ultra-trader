@@ -17,6 +17,7 @@ from strategy.base import Signal, SignalDirection
 from risk.position_sizing import PositionSizer, RISK_PRESETS
 from risk.circuit_breaker import CircuitBreaker
 from risk.persistence import save_risk_state, load_risk_state
+from risk.profile_config import normalize_risk_profile
 from strategy.filters import SessionManager, SessionPhase
 
 
@@ -44,6 +45,7 @@ class RiskManager:
     MAINTENANCE_MARGIN = 15800
 
     def __init__(self, profile: str = "balanced"):
+        profile = normalize_risk_profile(profile)
         self._lock = threading.Lock()
         self.position_sizer = PositionSizer(profile)
         self.circuit_breaker = CircuitBreaker(
@@ -74,8 +76,7 @@ class RiskManager:
 
     def set_profile(self, profile: str):
         """切換風險等級"""
-        if profile not in RISK_PRESETS:
-            return
+        profile = normalize_risk_profile(profile)
 
         self._profile = profile
         self.position_sizer.set_profile(profile)

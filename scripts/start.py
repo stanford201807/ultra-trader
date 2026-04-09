@@ -17,6 +17,7 @@ from pathlib import Path
 # 確保 UltraTrader 根目錄在 path
 PROJECT_ROOT = Path(__file__).parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
+from risk.profile_config import normalize_risk_profile
 
 
 def check_environment():
@@ -73,7 +74,7 @@ def main():
     parser = argparse.ArgumentParser(description="UltraTrader 微台自動交易系統")
     parser.add_argument("--mode", choices=["simulation", "paper", "live"], default=None,
                         help="交易模式（預設從 .env 讀取）")
-    parser.add_argument("--risk", choices=["conservative", "balanced", "aggressive", "crisis"], default=None,
+    parser.add_argument("--risk", choices=["conservative", "balanced", "aggressive", "crisis", "dangerous"], default=None,
                         help="風險等級（預設從 .env 讀取）")
     parser.add_argument("--port", type=int, default=None,
                         help="Dashboard 端口（預設 8888）")
@@ -93,7 +94,7 @@ def main():
     if args.mode:
         os.environ["TRADING_MODE"] = args.mode
     if args.risk:
-        os.environ["RISK_PROFILE"] = args.risk
+        os.environ["RISK_PROFILE"] = normalize_risk_profile(args.risk)
     if args.port:
         os.environ["DASHBOARD_PORT"] = str(args.port)
 

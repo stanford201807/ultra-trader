@@ -1,0 +1,184 @@
+============================= test session starts =============================
+platform win32 -- Python 3.14.3, pytest-9.0.2, pluggy-1.6.0
+rootdir: F:\GitHub\ultra-trader
+plugins: anyio-4.13.0, mock-3.15.1
+collected 7 items
+
+2026-04-08 16:38:20.406 | INFO     | core.position:load_daily_trades:479 - [PositionManager] 成功載入當日交易紀錄: 17 筆
+2026-04-08 16:38:20.406 | INFO     | risk.manager:__init__:71 - [Risk] 恢復風控狀態: peak=100,000 daily_loss=999,999
+2026-04-08 16:38:20.406 | INFO     | backtest.engine:run:128 - \U0001f4ca 回測開始 | 資料: 24 根K棒 | 策略: OrderbookBacktestTest
+2026-04-08 16:38:20.406 | INFO     | backtest.engine:run:129 - \U0001f4b0 初始資金: 100,000 元 | 風險: balanced | orderbook=off
+2026-04-08 16:38:20.419 | INFO     | backtest.engine:run:278 - \U0001f4ca 回測完成 | 交易 17 筆 | 最終餘額: 100,000 元
+tests\test_backtest.py [DEBUG] Strategy Decision: allowed=True, reason=orderbook fallback: not ready, feat_ready=False
+[DEBUG] Strategy Decision: allowed=True, reason=orderbook fallback: not ready, feat_ready=False
+[DEBUG] Strategy Decision: allowed=True, reason=orderbook fallback: not ready, feat_ready=False
+[DEBUG] Strategy Decision: allowed=True, reason=orderbook fallback: not ready, feat_ready=False
+[DEBUG] Strategy Decision: allowed=True, reason=orderbook fallback: not ready, feat_ready=False
+[DEBUG] Strategy Decision: allowed=True, reason=orderbook fallback: not ready, feat_ready=False
+[DEBUG] Strategy Decision: allowed=True, reason=orderbook fallback: not ready, feat_ready=False
+[DEBUG] Strategy Decision: allowed=True, reason=orderbook fallback: not ready, feat_ready=False
+[DEBUG] Strategy Decision: allowed=True, reason=orderbook fallback: not ready, feat_ready=False
+[DEBUG] Strategy Decision: allowed=True, reason=orderbook fallback: not ready, feat_ready=False
+[DEBUG] Strategy Decision: allowed=True, reason=orderbook fallback: not ready, feat_ready=False
+[DEBUG] Strategy Decision: allowed=True, reason=orderbook fallback: not ready, feat_ready=False
+[DEBUG] Strategy Decision: allowed=True, reason=orderbook fallback: not ready, feat_ready=False
+[DEBUG] Strategy Decision: allowed=True, reason=orderbook fallback: not ready, feat_ready=False
+[DEBUG] Strategy Decision: allowed=True, reason=orderbook fallback: not ready, feat_ready=False
+2026-04-08 16:38:20.422 | INFO     | core.position:load_daily_trades:479 - [PositionManager] 成功載入當日交易紀錄: 17 筆
+2026-04-08 16:38:20.422 | INFO     | risk.persistence:load_risk_state:47 - [Persist] 載入風控狀態: peak=100,120 daily_loss=0 state=cooldown
+2026-04-08 16:38:20.422 | INFO     | risk.manager:__init__:71 - [Risk] 恢復風控狀態: peak=100,120 daily_loss=0
+2026-04-08 16:38:20.422 | INFO     | backtest.engine:run:128 - \U0001f4ca 回測開始 | 資料: 24 根K棒 | 策略: OrderbookBacktestTest
+2026-04-08 16:38:20.422 | INFO     | backtest.engine:run:129 - \U0001f4b0 初始資金: 100,000 元 | 風險: balanced | orderbook=off
+2026-04-08 16:38:20.433 | INFO     | backtest.engine:run:278 - \U0001f4ca 回測完成 | 交易 17 筆 | 最終餘額: 100,000 元
+2026-04-08 16:38:20.434 | INFO     | core.position:load_daily_trades:479 - [PositionManager] 成功載入當日交易紀錄: 17 筆
+2026-04-08 16:38:20.434 | INFO     | risk.persistence:load_risk_state:47 - [Persist] 載入風控狀態: peak=100,120 daily_loss=0 state=cooldown
+2026-04-08 16:38:20.434 | INFO     | risk.manager:__init__:71 - [Risk] 恢復風控狀態: peak=100,120 daily_loss=0
+2026-04-08 16:38:20.434 | INFO     | backtest.engine:run:128 - \U0001f4ca 回測開始 | 資料: 24 根K棒 | 策略: OrderbookBacktestTest
+2026-04-08 16:38:20.434 | INFO     | backtest.engine:run:129 - \U0001f4b0 初始資金: 100,000 元 | 風險: balanced | orderbook=on
+2026-04-08 16:38:20.445 | INFO     | backtest.engine:run:278 - \U0001f4ca 回測完成 | 交易 17 筆 | 最終餘額: 100,000 元
+.[DEBUG] Strategy Decision: allowed=True, reason=orderbook fallback: not ready, feat_ready=False
+[DEBUG] Strategy Decision: allowed=True, reason=orderbook fallback: not ready, feat_ready=False
+[DEBUG] Strategy Decision: allowed=True, reason=orderbook fallback: not ready, feat_ready=False
+[DEBUG] Strategy Decision: allowed=True, reason=orderbook fallback: not ready, feat_ready=False
+[DEBUG] Strategy Decision: allowed=True, reason=orderbook fallback: not ready, feat_ready=False
+[DEBUG] Strategy Decision: allowed=True, reason=orderbook fallback: not ready, feat_ready=False
+[DEBUG] Strategy Decision: allowed=True, reason=orderbook fallback: not ready, feat_ready=False
+[DEBUG] Strategy Decision: allowed=True, reason=orderbook fallback: not ready, feat_ready=False
+[DEBUG] Strategy Decision: allowed=True, reason=orderbook fallback: not ready, feat_ready=False
+[DEBUG] Strategy Decision: allowed=True, reason=orderbook fallback: not ready, feat_ready=False
+[DEBUG] Strategy Decision: allowed=True, reason=orderbook fallback: not ready, feat_ready=False
+[DEBUG] Strategy Decision: allowed=True, reason=orderbook fallback: not ready, feat_ready=False
+[DEBUG] Strategy Decision: allowed=True, reason=orderbook fallback: not ready, feat_ready=False
+[DEBUG] Strategy Decision: allowed=True, reason=orderbook fallback: not ready, feat_ready=False
+[DEBUG] Strategy Decision: allowed=True, reason=orderbook fallback: not ready, feat_ready=False
+[DEBUG] Engine Bar 9: features.ready=True, spread=3.0, score=-3
+[DEBUG] Strategy Decision: allowed=False, reason=spread too wide: 3.0 > 2.0, feat_ready=True
+[DEBUG] Engine Bar 10: features.ready=True, spread=3.0, score=-3
+[DEBUG] Strategy Decision: allowed=False, reason=spread too wide: 3.0 > 2.0, feat_ready=True
+[DEBUG] Engine Bar 11: features.ready=True, spread=3.0, score=-3
+[DEBUG] Strategy Decision: allowed=False, reason=spread too wide: 3.0 > 2.0, feat_ready=True
+[DEBUG] Engine Bar 12: features.ready=True, spread=3.0, score=-3
+[DEBUG] Strategy Decision: allowed=False, reason=spread too wide: 3.0 > 2.0, feat_ready=True
+[DEBUG] Engine Bar 13: features.ready=True, spread=3.0, score=-3
+[DEBUG] Strategy Decision: allowed=False, reason=spread too wide: 3.0 > 2.0, feat_ready=True
+[DEBUG] Engine Bar 14: features.ready=True, spread=3.0, score=-3
+[DEBUG] Strategy Decision: allowed=False, reason=spread too wide: 3.0 > 2.0, feat_ready=True
+[DEBUG] Engine Bar 15: features.ready=True, spread=3.0, score=-3
+[DEBUG] Strategy Decision: allowed=False, reason=spread too wide: 3.0 > 2.0, feat_ready=True
+[DEBUG] Engine Bar 16: features.ready=True, spread=3.0, score=-3
+[DEBUG] Strategy Decision: allowed=False, reason=spread too wide: 3.0 > 2.0, feat_ready=True
+[DEBUG] Engine Bar 17: features.ready=True, spread=3.0, score=-3
+[DEBUG] Strategy Decision: allowed=False, reason=spread too wide: 3.0 > 2.0, feat_ready=True
+[DEBUG] Engine Bar 18: features.ready=True, spread=3.0, score=-3
+[DEBUG] Strategy Decision: allowed=False, reason=spread too wide: 3.0 > 2.0, feat_ready=True
+[DEBUG] Engine Bar 19: features.ready=True, spread=3.0, score=-3
+[DEBUG] Strategy Decision: allowed=False, reason=spread too wide: 3.0 > 2.0, feat_ready=True
+[DEBUG] Engine Bar 20: features.ready=True, spread=3.0, score=-3
+[DEBUG] Strategy Decision: allowed=False, reason=spread too wide: 3.0 > 2.0, feat_ready=True
+[DEBUG] Engine Bar 21: features.ready=True, spread=3.0, score=-3
+[DEBUG] Strategy Decision: allowed=False, reason=spread too wide: 3.0 > 2.0, feat_ready=True
+[DEBUG] Engine Bar 22: features.ready=True, spread=3.0, score=-3
+[DEBUG] Strategy Decision: allowed=False, reason=spread too wide: 3.0 > 2.0, feat_ready=True
+[DEBUG] Engine Bar 23: features.ready=True, spread=3.0, score=-3
+[DEBUG] Strategy Decision: allowed=False, reason=spread too wide: 3.0 > 2.0, feat_ready=True
+2026-04-08 16:38:20.615 | INFO     | core.position:load_daily_trades:479 - [PositionManager] 成功載入當日交易紀錄: 17 筆
+2026-04-08 16:38:20.616 | INFO     | risk.persistence:load_risk_state:47 - [Persist] 載入風控狀態: peak=100,120 daily_loss=0 state=cooldown
+2026-04-08 16:38:20.616 | INFO     | risk.manager:__init__:71 - [Risk] 恢復風控狀態: peak=100,120 daily_loss=0
+2026-04-08 16:38:20.616 | INFO     | backtest.engine:run:128 - \U0001f4ca 回測開始 | 資料: 24 根K棒 | 策略: OrderbookBacktestTest
+2026-04-08 16:38:20.616 | INFO     | backtest.engine:run:129 - \U0001f4b0 初始資金: 100,000 元 | 風險: balanced | orderbook=off
+2026-04-08 16:38:20.627 | INFO     | backtest.engine:run:278 - \U0001f4ca 回測完成 | 交易 17 筆 | 最終餘額: 100,000 元
+2026-04-08 16:38:20.628 | INFO     | core.position:load_daily_trades:479 - [PositionManager] 成功載入當日交易紀錄: 17 筆
+2026-04-08 16:38:20.628 | INFO     | risk.persistence:load_risk_state:47 - [Persist] 載入風控狀態: peak=100,120 daily_loss=0 state=cooldown
+2026-04-08 16:38:20.628 | INFO     | risk.manager:__init__:71 - [Risk] 恢復風控狀態: peak=100,120 daily_loss=0
+2026-04-08 16:38:20.628 | INFO     | backtest.engine:run:128 - \U0001f4ca 回測開始 | 資料: 24 根K棒 | 策略: OrderbookBacktestTest
+2026-04-08 16:38:20.628 | INFO     | backtest.engine:run:129 - \U0001f4b0 初始資金: 100,000 元 | 風險: balanced | orderbook=on
+2026-04-08 16:38:20.638 | INFO     | backtest.engine:run:278 - \U0001f4ca 回測完成 | 交易 17 筆 | 最終餘額: 100,000 元
+F[DEBUG] Strategy Decision: allowed=True, reason=orderbook fallback: not ready, feat_ready=False
+[DEBUG] Strategy Decision: allowed=True, reason=orderbook fallback: not ready, feat_ready=False
+[DEBUG] Strategy Decision: allowed=True, reason=orderbook fallback: not ready, feat_ready=False
+[DEBUG] Strategy Decision: allowed=True, reason=orderbook fallback: not ready, feat_ready=False
+[DEBUG] Strategy Decision: allowed=True, reason=orderbook fallback: not ready, feat_ready=False
+[DEBUG] Strategy Decision: allowed=True, reason=orderbook fallback: not ready, feat_ready=False
+[DEBUG] Strategy Decision: allowed=True, reason=orderbook fallback: not ready, feat_ready=False
+[DEBUG] Strategy Decision: allowed=True, reason=orderbook fallback: not ready, feat_ready=False
+[DEBUG] Strategy Decision: allowed=True, reason=orderbook fallback: not ready, feat_ready=False
+[DEBUG] Strategy Decision: allowed=True, reason=orderbook fallback: not ready, feat_ready=False
+[DEBUG] Strategy Decision: allowed=True, reason=orderbook fallback: not ready, feat_ready=False
+[DEBUG] Strategy Decision: allowed=True, reason=orderbook fallback: not ready, feat_ready=False
+[DEBUG] Strategy Decision: allowed=True, reason=orderbook fallback: not ready, feat_ready=False
+[DEBUG] Strategy Decision: allowed=True, reason=orderbook fallback: not ready, feat_ready=False
+[DEBUG] Strategy Decision: allowed=True, reason=orderbook fallback: not ready, feat_ready=False
+[DEBUG] Engine Bar 9: features.ready=True, spread=3.0, score=-3
+[DEBUG] Strategy Decision: allowed=False, reason=spread too wide: 3.0 > 2.0, feat_ready=True
+[DEBUG] Engine Bar 10: features.ready=True, spread=3.0, score=-3
+[DEBUG] Strategy Decision: allowed=False, reason=spread too wide: 3.0 > 2.0, feat_ready=True
+[DEBUG] Engine Bar 11: features.ready=True, spread=3.0, score=-3
+[DEBUG] Strategy Decision: allowed=False, reason=spread too wide: 3.0 > 2.0, feat_ready=True
+[DEBUG] Engine Bar 12: features.ready=True, spread=3.0, score=-3
+[DEBUG] Strategy Decision: allowed=False, reason=spread too wide: 3.0 > 2.0, feat_ready=True
+[DEBUG] Engine Bar 13: features.ready=True, spread=3.0, score=-3
+[DEBUG] Strategy Decision: allowed=False, reason=spread too wide: 3.0 > 2.0, feat_ready=True
+[DEBUG] Engine Bar 14: features.ready=True, spread=3.0, score=-3
+[DEBUG] Strategy Decision: allowed=False, reason=spread too wide: 3.0 > 2.0, feat_ready=True
+[DEBUG] Engine Bar 15: features.ready=True, spread=3.0, score=-3
+[DEBUG] Strategy Decision: allowed=False, reason=spread too wide: 3.0 > 2.0, feat_ready=True
+[DEBUG] Engine Bar 16: features.ready=True, spread=3.0, score=-3
+[DEBUG] Strategy Decision: allowed=False, reason=spread too wide: 3.0 > 2.0, feat_ready=True
+[DEBUG] Engine Bar 17: features.ready=True, spread=3.0, score=-3
+[DEBUG] Strategy Decision: allowed=False, reason=spread too wide: 3.0 > 2.0, feat_ready=True
+[DEBUG] Engine Bar 18: features.ready=True, spread=3.0, score=-3
+[DEBUG] Strategy Decision: allowed=False, reason=spread too wide: 3.0 > 2.0, feat_ready=True
+[DEBUG] Engine Bar 19: features.ready=True, spread=3.0, score=-3
+[DEBUG] Strategy Decision: allowed=False, reason=spread too wide: 3.0 > 2.0, feat_ready=True
+[DEBUG] Engine Bar 20: features.ready=True, spread=3.0, score=-3
+[DEBUG] Strategy Decision: allowed=False, reason=spread too wide: 3.0 > 2.0, feat_ready=True
+[DEBUG] Engine Bar 21: features.ready=True, spread=3.0, score=-3
+[DEBUG] Strategy Decision: allowed=False, reason=spread too wide: 3.0 > 2.0, feat_ready=True
+[DEBUG] Engine Bar 22: features.ready=True, spread=3.0, score=-3
+[DEBUG] Strategy Decision: allowed=False, reason=spread too wide: 3.0 > 2.0, feat_ready=True
+[DEBUG] Engine Bar 23: features.ready=True, spread=3.0, score=-3
+[DEBUG] Strategy Decision: allowed=False, reason=spread too wide: 3.0 > 2.0, feat_ready=True
+.....
+
+================================== FAILURES ===================================
+_ TestBacktestEngineOrderbook.test_filtered_result_tracks_orderbook_rejections _
+
+self = <tests.test_backtest.TestBacktestEngineOrderbook testMethod=test_filtered_result_tracks_orderbook_rejections>
+
+    def test_filtered_result_tracks_orderbook_rejections(self):
+        """當 proxy orderbook 反向時，filtered 應留下拒單統計"""
+        engine = BacktestEngine(initial_balance=100000, slippage=0, instrument="TMF")
+        engine._build_orderbook_proxy_features = lambda *args, **kwargs: OrderbookFeatures(
+            spread=3.0,
+            orderbook_ready=True,
+            pressure_score=-3,
+            pressure_bias="bearish",
+        )
+    
+        baseline = engine.run(
+            data=self._build_data(),
+            strategy=TestOrderbookBacktestStrategy(),
+            risk_profile="balanced",
+            use_orderbook_filter=False,
+        )
+        filtered = engine.run(
+            data=self._build_data(),
+            strategy=TestOrderbookBacktestStrategy(),
+            risk_profile="balanced",
+            use_orderbook_filter=True,
+        )
+    
+        self.assertGreater(len(baseline.trades), 0)
+>       self.assertEqual(len(filtered.trades), 0)
+E       AssertionError: 17 != 0
+
+tests\test_backtest.py:172: AssertionError
+============================== warnings summary ===============================
+tests\test_backtest.py:30
+  F:\GitHub\ultra-trader\tests\test_backtest.py:30: PytestCollectionWarning: cannot collect test class 'TestOrderbookBacktestStrategy' because it has a __init__ constructor (from: tests/test_backtest.py)
+    class TestOrderbookBacktestStrategy(BaseStrategy):
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ===========================
+FAILED tests/test_backtest.py::TestBacktestEngineOrderbook::test_filtered_result_tracks_orderbook_rejections
+=================== 1 failed, 6 passed, 1 warning in 0.71s ====================

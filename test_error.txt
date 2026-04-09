@@ -1,0 +1,173 @@
+============================= test session starts =============================
+platform win32 -- Python 3.14.3, pytest-9.0.2, pluggy-1.6.0
+rootdir: F:\GitHub\ultra-trader
+plugins: anyio-4.13.0, mock-3.15.1
+collected 9 items
+
+tests\test_auto_trade.py ..FFFFFFF                                       [100%]
+
+================================== FAILURES ===================================
+_____________________ TestToggleAutoTrade.test_toggle_on ______________________
+
+self = <tests.test_auto_trade.TestToggleAutoTrade object at 0x00000236165DFD90>
+
+    def test_toggle_on(self):
+        """toggle_auto_trade(True) 應啟用自動交易"""
+        engine = _make_initialized_engine()
+>       result = engine.toggle_auto_trade(True)
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       TypeError: TradingEngine.toggle_auto_trade() takes 1 positional argument but 2 were given
+
+tests\test_auto_trade.py:90: TypeError
+_____________________ TestToggleAutoTrade.test_toggle_off _____________________
+
+self = <tests.test_auto_trade.TestToggleAutoTrade object at 0x00000236165DFB10>
+
+    def test_toggle_off(self):
+        """toggle_auto_trade(False) 應停用自動交易"""
+        engine = _make_initialized_engine()
+        engine.auto_trade = True
+>       result = engine.toggle_auto_trade(False)
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       TypeError: TradingEngine.toggle_auto_trade() takes 1 positional argument but 2 were given
+
+tests\test_auto_trade.py:98: TypeError
+_________________ TestToggleAutoTrade.test_toggle_broadcasts __________________
+
+self = <tests.test_auto_trade.TestToggleAutoTrade object at 0x0000023616700B00>
+
+    def test_toggle_broadcasts(self):
+        """toggle 應透過 WebSocket 廣播狀態"""
+        engine = _make_initialized_engine()
+        broadcast_mock = MagicMock()
+        engine._ws_broadcast = broadcast_mock
+    
+>       engine.toggle_auto_trade(True)
+E       TypeError: TradingEngine.toggle_auto_trade() takes 1 positional argument but 2 were given
+
+tests\test_auto_trade.py:108: TypeError
+_______ TestGetStateAutoTrade.test_get_state_includes_auto_trade_false ________
+
+self = <tests.test_auto_trade.TestGetStateAutoTrade object at 0x00000236165DFED0>
+
+    def test_get_state_includes_auto_trade_false(self):
+        """get_state 應包含 auto_trade = False"""
+        engine = _make_initialized_engine()
+>       state = engine.get_state()
+                ^^^^^^^^^^^^^^^^^^
+
+tests\test_auto_trade.py:126: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <core.engine.TradingEngine object at 0x00000236166B5910>
+
+    def get_state(self) -> dict:
+>       return self.queries.get_state()
+               ^^^^^^^^^^^^^^^^^^^^^^^^
+
+core\engine\__init__.py:295: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <core.engine.queries.EngineQueries object at 0x00000236166B5C70>
+
+    def get_state(self) -> dict:
+        prices = {}
+        instruments_data = {}
+    
+        for inst in self.instruments:
+            pipeline = self.pipelines.get(inst)
+            price = pipeline.aggregator.current_price if pipeline and hasattr(pipeline, "aggregator") and pipeline.aggregator else 0
+            prices[inst] = price
+    
+            pos = self.position_manager.positions.get(inst)
+            config = get_spec(inst)
+            unrealized = pos.unrealized_pnl(price, config.point_value) if pos and not pos.is_flat else 0
+    
+            instruments_data[inst] = {
+                "name": config.name,
+                "price": price,
+                "point_value": config.point_value,
+                "position": {
+                    "side": pos.side.value if pos else "flat",
+                    "entry_price": pos.entry_price if pos else 0,
+                    "quantity": pos.quantity if pos else 0,
+                    "entry_time": pos.entry_time.isoformat() if pos and pos.entry_time else None,
+                    "stop_loss": pos.stop_loss if pos else 0,
+                    "take_profit": pos.take_profit if pos else 0,
+                    "trailing_stop": pos.trailing_stop if pos else 0,
+                    "trailing_activated": pos.trailing_activated if pos else False,
+                    "breakeven_activated": pos.breakeven_activated if pos else False,
+                    "max_unrealized_profit": pos.max_unrealized_profit if pos else 0,
+                    "bars_since_entry": pos.bars_since_entry if pos else 0,
+                    "unrealized_pnl": round(unrealized, 0),
+                },
+                "snapshot": {
+                    "adx": _safe_round(pipeline.snapshot.adx) if pipeline and hasattr(pipeline, "snapshot") else 0,
+                    "rsi": _safe_round(pipeline.snapshot.rsi, default=50) if pipeline and hasattr(pipeline, "snapshot") else 50,
+                    "atr": _safe_round(pipeline.snapshot.atr) if pipeline and hasattr(pipeline, "snapshot") else 0,
+                    "ema20": _safe_round(pipeline.snapshot.ema20) if pipeline and hasattr(pipeline, "snapshot") else 0,
+                    "ema60": _safe_round(pipeline.snapshot.ema60) if pipeline and hasattr(pipeline, "snapshot") else 0,
+                    "ema200": _safe_round(pipeline.snapshot.ema200) if pipeline and hasattr(pipeline, "snapshot") and hasattr(pipeline.snapshot, 'ema200') and pipeline.snapshot.ema200 else 0,
+                    "spread": _safe_round(pipeline.snapshot.spread) if pipeline and hasattr(pipeline, "snapshot") else 0,
+                    "pressure_bias": pipeline.snapshot.pressure_bias if pipeline and hasattr(pipeline, "snapshot") else "neutral",
+                    "orderbook_ready": pipeline.snapshot.orderbook_ready if pipeline and hasattr(pipeline, "snapshot") else False,
+                },
+                "strategy": pipeline.strategy.get_parameters() if pipeline and hasattr(pipeline, "strategy") and pipeline.strategy else {},
+            }
+    
+        pm = self.position_manager
+>       total_unrealized = pm.get_total_unrealized_pnl(prices)
+                           ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       AttributeError: 'NoneType' object has no attribute 'get_total_unrealized_pnl'
+
+core\engine\queries.py:87: AttributeError
+________ TestGetStateAutoTrade.test_get_state_includes_auto_trade_true ________
+
+self = <tests.test_auto_trade.TestGetStateAutoTrade object at 0x0000023616728050>
+
+    def test_get_state_includes_auto_trade_true(self):
+        """toggle 後 get_state 應反映新狀態"""
+        engine = _make_initialized_engine()
+>       engine.toggle_auto_trade(True)
+E       TypeError: TradingEngine.toggle_auto_trade() takes 1 positional argument but 2 were given
+
+tests\test_auto_trade.py:133: TypeError
+____________ TestProcessKbarAutoTrade.test_auto_trade_off_no_entry ____________
+
+self = <tests.test_auto_trade.TestProcessKbarAutoTrade object at 0x0000023616728410>
+
+    def test_auto_trade_off_no_entry(self):
+        """auto_trade=False 時，策略有信號不應自動進場"""
+        engine = _make_initialized_engine()
+        engine.state = EngineState.RUNNING
+        engine.auto_trade = False
+    
+>       inst = engine.instruments[0]
+               ^^^^^^^^^^^^^^^^^^^^^
+E       IndexError: list index out of range
+
+tests\test_auto_trade.py:151: IndexError
+______________ TestProcessKbarAutoTrade.test_auto_trade_on_entry ______________
+
+self = <tests.test_auto_trade.TestProcessKbarAutoTrade object at 0x00000236167287D0>
+
+    def test_auto_trade_on_entry(self):
+        """auto_trade=True 時，策略有信號應自動進場"""
+        engine = _make_initialized_engine()
+        engine.state = EngineState.RUNNING
+        engine.auto_trade = True
+    
+>       inst = engine.instruments[0]
+               ^^^^^^^^^^^^^^^^^^^^^
+E       IndexError: list index out of range
+
+tests\test_auto_trade.py:204: IndexError
+=========================== short test summary info ===========================
+FAILED tests/test_auto_trade.py::TestToggleAutoTrade::test_toggle_on - TypeEr...
+FAILED tests/test_auto_trade.py::TestToggleAutoTrade::test_toggle_off - TypeE...
+FAILED tests/test_auto_trade.py::TestToggleAutoTrade::test_toggle_broadcasts
+FAILED tests/test_auto_trade.py::TestGetStateAutoTrade::test_get_state_includes_auto_trade_false
+FAILED tests/test_auto_trade.py::TestGetStateAutoTrade::test_get_state_includes_auto_trade_true
+FAILED tests/test_auto_trade.py::TestProcessKbarAutoTrade::test_auto_trade_off_no_entry
+FAILED tests/test_auto_trade.py::TestProcessKbarAutoTrade::test_auto_trade_on_entry
+========================= 7 failed, 2 passed in 0.71s =========================

@@ -7,6 +7,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 import unittest
+from unittest.mock import MagicMock
 from datetime import datetime
 
 from core.market_data import KBar, MarketSnapshot, IndicatorEngine, Tick
@@ -19,6 +20,7 @@ from strategy.base import Signal, SignalDirection
 from core.engine import TradingEngine, InstrumentPipeline, EngineState
 from core.instrument_config import get_spec
 from core.position import PositionManager
+from strategy.orderbook_profiles import ORDERBOOK_PROFILES
 
 
 class TestMarketRegimeClassifier(unittest.TestCase):
@@ -403,7 +405,7 @@ class TestEngineOrderbookIntegration(unittest.TestCase):
         spec = get_spec("TMF")
         engine = TradingEngine()
         engine.instruments = ["TMF"]
-        engine.pipelines = {"TMF": InstrumentPipeline(code="TMF", spec=spec)}
+        engine.pipelines = {"TMF": InstrumentPipeline(code="TMF", spec=spec, strategy=AdaptiveMomentumStrategy())}
         engine.position_manager = PositionManager(
             instruments=["TMF"],
             configs={"TMF": spec},
@@ -420,13 +422,46 @@ class TestEngineOrderbookIntegration(unittest.TestCase):
         ]
 
         for tick in ticks:
-            engine._process_tick(tick)
+            engine.events._process_tick(tick)
 
         pipeline = engine.pipelines["TMF"]
         self.assertTrue(pipeline.orderbook_features.orderbook_ready)
         self.assertEqual(pipeline.snapshot.spread, pipeline.orderbook_features.spread)
         self.assertEqual(pipeline.snapshot.pressure_bias, pipeline.orderbook_features.pressure_bias)
         self.assertTrue(pipeline.snapshot.orderbook_ready)
+
+    def test_set_risk_profile_maps_dangerous_to_crisis_and_updates_orderbook_profile(self):
+        """dangerous 應映射為 crisis，並套用對應 orderbook 參數"""
+        spec = get_spec("TMF")
+        engine = TradingEngine()
+        engine.risk_manager = MagicMock()
+        engine.instruments = ["TMF"]
+        engine.pipelines = {"TMF": InstrumentPipeline(code="TMF", spec=spec, strategy=AdaptiveMomentumStrategy())}
+        engine.position_manager = PositionManager(
+            instruments=["TMF"],
+            configs={"TMF": spec},
+            initial_balance=100000,
+        )
+
+        engine.set_risk_profile("dangerous")
+
+        strategy = engine.pipelines["TMF"].strategy
+        self.assertEqual(engine.risk_profile, "crisis")
+        self.assertEqual(strategy.signal_generator.risk_profile, "crisis")
+        self.assertEqual(
+            strategy.orderbook_filter.spread_threshold_normal,
+            ORDERBOOK_PROFILES["A5"]["spread_threshold_normal"],
+        )
+        self.assertEqual(
+            strategy.orderbook_filter.pressure_min_score,
+            ORDERBOOK_PROFILES["A5"]["pressure_min_score"],
+        )
+
+    def test_set_risk_profile_rejects_invalid_value(self):
+        """未知風險值應直接拒絕"""
+        engine = TradingEngine()
+        with self.assertRaises(ValueError):
+            engine.set_risk_profile("all-in")
 
 
 if __name__ == "__main__":

@@ -131,7 +131,10 @@ class TestRiskManager(unittest.TestCase):
     def test_approve_valid_signal(self):
         """有效訊號通過風控"""
         rm = RiskManager("balanced")
+        rm.circuit_breaker._state = CircuitState.ACTIVE # 強制繞過硬碟 cooldown
         pm = PositionManager()
+        pm.daily_trades = []
+        pm._daily_trade_count = 0
         account = AccountInfo(balance=100000, equity=100000, margin_available=100000)
         snap = MarketSnapshot(price=22000, atr=50)
 
@@ -151,7 +154,10 @@ class TestRiskManager(unittest.TestCase):
         """已有持倉 → 拒絕新進場"""
         from core.position import Side
         rm = RiskManager("balanced")
+        rm.circuit_breaker._state = CircuitState.ACTIVE
         pm = PositionManager()
+        pm.daily_trades = []
+        pm._daily_trade_count = 0
         pm.open_position("TMF", Side.LONG, 22000, 1, 21900, 22200)
         account = AccountInfo(balance=100000, equity=100000, margin_available=95000)
         snap = MarketSnapshot(price=22050, atr=50)
@@ -169,7 +175,10 @@ class TestRiskManager(unittest.TestCase):
         """平倉訊號直接通過"""
         from core.position import Side
         rm = RiskManager("balanced")
+        rm.circuit_breaker._state = CircuitState.ACTIVE
         pm = PositionManager()
+        pm.daily_trades = []
+        pm._daily_trade_count = 0
         pm.open_position("TMF", Side.LONG, 22000, 1, 21900, 22200)
         account = AccountInfo(balance=100000, equity=100000, margin_available=95000)
         snap = MarketSnapshot(price=22100, atr=50)

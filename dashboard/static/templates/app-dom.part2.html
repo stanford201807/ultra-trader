@@ -1,0 +1,96 @@
+      <!-- 交易紀錄 -->
+      <div class="panel-card" style="flex: 1;">
+        <div class="panel-title">&#128176; 交易紀錄 <span style="font-size: calc(10px * var(--uifs)); color: var(--text-muted); font-weight: 400;">{{ trades.length }} 筆</span></div>
+        <div :class="['trade-list', tradesExpanded ? 'expanded' : '']">
+          <div v-if="trades.length === 0" style="color: var(--text-muted); font-size: calc(11px * var(--uifs)); text-align: center; padding: 12px;">
+            尚無紀錄
+          </div>
+          <div v-for="(t, i) in displayTrades" :key="i" class="trade-item">
+            <div>
+              <span style="font-weight: 600;" :class="t.action === 'close' ? (t.pnl >= 0 ? 'text-green' : 'text-red') : t.action === 'buy' ? 'text-green' : 'text-red'">
+                {{ t.action === 'buy' ? '買' : t.action === 'sell' ? '空' : '平' }}
+              </span>
+              <span style="color: var(--text-muted); margin-left: 3px;">@ {{ t.price }}</span>
+              <span v-if="t.side" style="color: var(--text-muted); font-size: calc(9px * var(--uifs)); margin-left: 3px;">({{ t.side }})</span>
+            </div>
+            <div style="text-align: right; display: flex; flex-direction: column; align-items: flex-end; gap: 4px;">
+              <div>
+                <span v-if="t.pnl !== undefined" style="font-weight: 600;" :class="t.pnl >= 0 ? 'text-green' : 'text-red'">
+                {{ t.pnl >= 0 ? '+' : '' }}{{ t.pnl }}
+              </span>
+              <span v-if="t.cumPnl !== undefined" style="font-size: calc(9px * var(--uifs)); margin-left: 4px;" :style="{ color: t.cumPnl >= 0 ? 'var(--green)' : 'var(--red)', opacity: 0.7 }">
+                ({{ t.cumPnl >= 0 ? '+' : '' }}{{ t.cumPnl }})
+              </span>
+              <span style="color: var(--text-muted); font-size: calc(9px * var(--uifs)); margin-left: 3px;">{{ formatTime(t.time) }}</span>
+              </div>
+              <div v-if="t.id" style="display: flex; gap: 8px;">
+                <button @click="editTrade(t)" style="background: none; border: none; cursor: pointer; color: var(--text-muted); font-size: calc(10px * var(--uifs)); padding: 0;">✏️修改</button>
+                <button @click="deleteTrade(t.id)" style="background: none; border: none; cursor: pointer; color: var(--red); font-size: calc(10px * var(--uifs)); padding: 0;">🗑️刪除</button>
+              </div>
+            </div>
+          </div>
+        </div>
+        <button v-if="trades.length > 10" class="trade-expand-btn" @click="tradesExpanded = !tradesExpanded">
+          {{ tradesExpanded ? '▲ 收合' : '▼ 展開全部 (' + trades.length + ' 筆)' }}
+        </button>
+      </div>
+
+      <!-- 累計盈虧 -->
+      <div class="panel-card" style="flex: 1;" v-if="cumPerf.total_trades > 0">
+        <div class="panel-title">&#128200; 累計盈虧</div>
+        <div class="cum-pnl-row">
+          <div class="cum-pnl-item">
+            <div class="cum-pnl-label">總損益</div>
+            <div class="cum-pnl-value" :class="cumPerf.total_pnl >= 0 ? 'text-green' : 'text-red'">
+              {{ cumPerf.total_pnl >= 0 ? '+' : '' }}{{ formatNumber(cumPerf.total_pnl) }}
+            </div>
+          </div>
+          <div class="cum-pnl-item">
+            <div class="cum-pnl-label">勝率</div>
+            <div class="cum-pnl-value" style="color: var(--cyan);">{{ cumPerf.overall_win_rate?.toFixed(1) || '-' }}%</div>
+          </div>
+          <div class="cum-pnl-item">
+            <div class="cum-pnl-label">盈虧比</div>
+            <div class="cum-pnl-value" style="color: var(--amber);">{{ cumPerf.overall_profit_factor?.toFixed(2) || '-' }}</div>
+          </div>
+          <div class="cum-pnl-item">
+            <div class="cum-pnl-label">最大回撤</div>
+            <div class="cum-pnl-value text-red">{{ formatNumber(cumPerf.max_drawdown) }}</div>
+          </div>
+        </div>
+        <div class="cum-pnl-row">
+          <div class="cum-pnl-item">
+            <div class="cum-pnl-label">交易筆數</div>
+            <div class="cum-pnl-value" style="color: var(--text-primary);">{{ cumPerf.total_trades }}</div>
+          </div>
+          <div class="cum-pnl-item">
+            <div class="cum-pnl-label">報酬率</div>
+            <div class="cum-pnl-value" :class="cumPerf.total_return_pct >= 0 ? 'text-green' : 'text-red'">
+              {{ cumPerf.total_return_pct >= 0 ? '+' : '' }}{{ cumPerf.total_return_pct?.toFixed(2) || '-' }}%
+            </div>
+          </div>
+          <div class="cum-pnl-item">
+            <div class="cum-pnl-label">最佳日</div>
+            <div class="cum-pnl-value text-green">{{ cumPerf.best_day?.pnl >= 0 ? '+' : '' }}{{ formatNumber(cumPerf.best_day?.pnl) }}</div>
+          </div>
+          <div class="cum-pnl-item">
+            <div class="cum-pnl-label">最差日</div>
+            <div class="cum-pnl-value text-red">{{ formatNumber(cumPerf.worst_day?.pnl) }}</div>
+          </div>
+        </div>
+        <!-- 累計 PnL 迷你走勢圖 -->
+        <div v-if="cumPnlCurve.length > 0" class="cum-sparkline">
+          <div v-for="(v, i) in cumPnlCurve" :key="i" class="cum-sparkline-bar"
+               :style="{ height: v.h + '%', background: v.c >= 0 ? 'var(--green)' : 'var(--red)' }">
+          </div>
+        </div>
+        <div v-if="cumPnlCurve.length > 0" style="display: flex; justify-content: space-between; font-size: calc(9px * var(--uifs)); color: var(--text-muted); margin-top: 2px;">
+          <span>第 1 筆</span>
+          <span>累計權益曲線</span>
+          <span>第 {{ cumPerf.all_pnls?.length || 0 }} 筆</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+

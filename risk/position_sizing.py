@@ -6,6 +6,7 @@ UltraTrader 部位大小計算
 import math
 from dataclasses import dataclass
 from typing import Optional
+from risk.profile_config import normalize_risk_profile
 
 
 @dataclass
@@ -86,12 +87,13 @@ class PositionSizer:
     """
 
     def __init__(self, profile: str = "balanced"):
-        self.preset = RISK_PRESETS.get(profile, RISK_PRESETS["balanced"])
+        canonical = normalize_risk_profile(profile)
+        self.preset = RISK_PRESETS[canonical]
 
     def set_profile(self, profile: str):
         """切換風險預設"""
-        if profile in RISK_PRESETS:
-            self.preset = RISK_PRESETS[profile]
+        canonical = normalize_risk_profile(profile)
+        self.preset = RISK_PRESETS[canonical]
 
     def calculate(self, account_balance: float, stop_distance: float,
                   point_value: float = 10.0) -> int:

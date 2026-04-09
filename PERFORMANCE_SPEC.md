@@ -395,12 +395,12 @@ class TradingEngine:
 
 ## 八、實作優先序
 
-| 順序 | 項目 | 預估 |
+| 順序 | 項目 | 狀態 |
 |------|------|------|
-| 1 | `core/performance.py` — PerformanceTracker 類 | 核心 |
-| 2 | Trade dataclass 補強 (strategy, MFE, MAE) | 小改 |
-| 3 | Engine 整合（on_trade_closed, on_session_end） | 小改 |
-| 4 | daily/cumulative JSON 存儲 | 含在 1 |
+| 1 | `core/performance.py` — PerformanceTracker 類 | 核心 (已完成) |
+| 2 | Trade dataclass 補強 (strategy, MFE, MAE) | 小改 (已完成) |
+| 3 | Engine 整合（on_trade_closed, on_session_end） | 小改 (已完成) |
+| 4 | daily/cumulative JSON 存儲 | 含在 1 (已完成) |
 | 5 | Dashboard API endpoints | 中等 |
 | 6 | MindThread push 接口 | 中等 |
 | 7 | weekly/monthly 自動彙總 | 後補 |

@@ -52,6 +52,7 @@ class AdaptiveMomentumStrategy(BaseStrategy):
         """K 棒收盤時的決策邏輯（升級版）"""
         self._last_orderbook_decision_reason = ""
         self._last_orderbook_blocked = False
+        self._last_signal_strength = 0.0  # 確保每日/每 K 棒初始化，未達條件便歸零顯示
 
         # 0. 盤別檢查 — 收盤前 30 分不開新倉
         phase = self._session.get_phase()
@@ -86,9 +87,9 @@ class AdaptiveMomentumStrategy(BaseStrategy):
         if regime == MarketRegime.CRISIS_DOWN:
             signal = self._crisis_short_signal(snapshot)
             if signal:
+                self._last_signal_strength = signal.strength
                 if signal.strength < (0.60 + open_boost):
                     return None
-                self._last_signal_strength = signal.strength
                 if not self._orderbook_allows_entry(signal, phase, regime, kbar.datetime, snapshot):
                     return None
                 logger.info(f"[CRISIS SHORT] strength: {signal.strength:.2f} | {signal.reason}")
@@ -120,11 +121,13 @@ class AdaptiveMomentumStrategy(BaseStrategy):
         # 10. 正常趨勢 → 多因子訊號（含多時框確認）
         signal = self.signal_generator.generate(snapshot, regime, snapshot_5m, snapshot_15m)
 
+        # 確保即使訊號未達開倉條件，Dashboard 也能顯示即時因子總分
+        self._last_signal_strength = self.signal_generator.latest_total_score
+
         if signal:
             # 開盤波動期提高門檻
             if signal.strength < (self.signal_generator.params.min_signal_strength + open_boost):
                 return None
-            self._last_signal_strength = signal.strength
             if not self._orderbook_allows_entry(signal, phase, regime, kbar.datetime, snapshot):
                 return None
             logger.info(

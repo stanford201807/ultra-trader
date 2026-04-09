@@ -195,6 +195,14 @@ class TickAggregator:
         """取得當前未完成的 K 棒"""
         return self._current_bars.get(interval)
 
+    def seed_bars(self, interval: int, bars: list[KBar]):
+        """以歷史 K 棒暖機，避免即時模式啟動後圖表完全空白。"""
+        if interval not in self._completed_bars or not bars:
+            return
+        normalized = sorted(bars, key=lambda bar: bar.datetime)
+        self._completed_bars[interval] = normalized.copy()
+        self.current_price = normalized[-1].close
+
     def get_bars_dataframe(self, interval: int, count: int = 200) -> pd.DataFrame:
         """取得 K 棒 DataFrame（供指標計算用）"""
         bars = self.get_bars(interval, count)

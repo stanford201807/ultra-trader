@@ -86,6 +86,7 @@ class BacktestEngine:
         position_manager = PositionManager(
             instruments=[inst], configs=configs,
             initial_balance=self.initial_balance,
+            auto_load=False,
         )
         risk_manager = RiskManager(profile=risk_profile)
         risk_manager._peak_equity = self.initial_balance

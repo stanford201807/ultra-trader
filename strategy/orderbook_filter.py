@@ -25,7 +25,7 @@ class OrderbookFilter:
         spread_threshold_open: float = 4.0,
         spread_threshold_crisis: float = 6.0,
         spread_threshold_strong_day: float = 5.0,
-        spread_threshold_strong_night: float = 4.0,
+        spread_threshold_strong_night: float = 3.5,
         pressure_min_score: int = 2,
     ):
         self.spread_threshold_normal = spread_threshold_normal
@@ -34,6 +34,24 @@ class OrderbookFilter:
         self.spread_threshold_strong_day = spread_threshold_strong_day
         self.spread_threshold_strong_night = spread_threshold_strong_night
         self.pressure_min_score = max(1, pressure_min_score)
+
+    def configure(self, **kwargs):
+        """動態更新 filter 參數（僅允許白名單欄位）。"""
+        allowed = {
+            "spread_threshold_normal",
+            "spread_threshold_open",
+            "spread_threshold_crisis",
+            "spread_threshold_strong_day",
+            "spread_threshold_strong_night",
+            "pressure_min_score",
+        }
+        for key, value in kwargs.items():
+            if key not in allowed:
+                continue
+            if key == "pressure_min_score":
+                setattr(self, key, max(1, int(value)))
+            else:
+                setattr(self, key, float(value))
 
     def allow_entry(
         self,

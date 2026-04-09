@@ -8,6 +8,10 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
 from typing import Optional
+import json
+import os
+import uuid
+from pathlib import Path
 
 
 class Side(Enum):
@@ -35,6 +39,11 @@ class Position:
     # 分段停利：[(price, fraction), ...]
     take_profit_levels: list = field(default_factory=list)
     original_quantity: int = 0  # 原始數量（分段出場用）
+
+    # 績效追蹤
+    strategy: str = ""
+    market_regime: str = ""
+    signal_strength: float = 0.0
 
     @property
     def is_flat(self) -> bool:
@@ -74,6 +83,7 @@ class Trade:
     reason: str  # 出場原因
     bars_held: int = 0  # 持倉 K 棒數
     instrument: str = ""  # 商品代碼
+    id: str = field(default_factory=lambda: str(uuid.uuid4()))  # 交易紀錄唯一識別碼
 
     # === 績效追蹤新增欄位 ===
     strategy: str = ""                  # "momentum" / "mean_reversion"
@@ -111,6 +121,7 @@ class Trade:
             "signal_strength": self.signal_strength,
             "max_favorable": self.max_favorable,
             "max_adverse": self.max_adverse,
+            "id": self.id,
         }
 
 
@@ -126,7 +137,7 @@ class PositionManager:
     """
 
     def __init__(self, instruments: list[str] = None, configs: dict = None,
-                 initial_balance: float = 0.0):
+                 initial_balance: float = 0.0, auto_load: bool = True):
         """
         instruments: 商品代碼列表，如 ["TMF", "TGF"]
         configs: 每個商品的規格 {code: InstrumentSpec}
@@ -146,6 +157,9 @@ class PositionManager:
         self.trades: list[Trade] = []
         self.daily_trades: list[Trade] = []
         self._today: Optional[str] = None
+        
+        if auto_load:
+            self.load_daily_trades()
 
     def _get_config(self, instrument: str):
         """取得商品規格"""
@@ -161,6 +175,9 @@ class PositionManager:
         take_profit: float,
         timestamp: Optional[datetime] = None,
         take_profit_levels: list = None,
+        strategy: str = "",
+        market_regime: str = "",
+        signal_strength: float = 0.0,
     ) -> Position:
         """開倉（指定商品）— 線程安全"""
         with self._lock:
@@ -184,6 +201,9 @@ class PositionManager:
                 bars_since_entry=0,
                 take_profit_levels=take_profit_levels or [],
                 original_quantity=quantity,
+                strategy=strategy,
+                market_regime=market_regime,
+                signal_strength=signal_strength,
             )
             self.positions[instrument] = new_pos
             # 向後相容
@@ -242,11 +262,17 @@ class PositionManager:
                 max_favorable=max_favorable,
                 max_adverse=max_adverse,
                 instrument=instrument,
+                strategy=pos.strategy,
+                market_regime=pos.market_regime,
+                signal_strength=pos.signal_strength,
             )
 
             self.trades.append(trade)
             self._update_daily_trades(trade)
             self.balance += trade.net_pnl
+            
+            # 持久化當日紀錄
+            self.save_daily_trades()
 
             # 清空持倉
             self.positions[instrument] = Position()
@@ -363,7 +389,7 @@ class PositionManager:
             "win_rate": len(winners) / len(self.trades) * 100 if self.trades else 0,
             "avg_win": total_wins / len(winners) if winners else 0,
             "avg_loss": total_losses / len(losers) if losers else 0,
-            "profit_factor": total_wins / total_losses if total_losses > 0 else float("inf"),
+            "profit_factor": total_wins / total_losses if total_losses > 0 else 999.0,
             "total_pnl": sum(t.net_pnl for t in self.trades),
             "max_drawdown": max_dd,
             "avg_bars_held": sum(t.bars_held for t in self.trades) / len(self.trades),
@@ -392,3 +418,113 @@ class PositionManager:
                 "unrealized_points": pos.unrealized_points(price),
             }
         return result
+
+    # ============================================================
+    # 持久化與增刪查改 (Persistence & CRUD)
+    # ============================================================
+
+    def _get_daily_trades_path(self) -> Path:
+        """取得今日交易紀錄檔案路徑"""
+        today = datetime.now().strftime("%Y-%m-%d")
+        trades_dir = Path("data/trades")
+        trades_dir.mkdir(parents=True, exist_ok=True)
+        return trades_dir / f"daily_trades_{today}.json"
+
+    def load_daily_trades(self):
+        """啟動時載入當日的歷史交易紀錄"""
+        path = self._get_daily_trades_path()
+        if not path.exists():
+            return
+            
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+                
+            self.trades = []
+            for t_dict in data:
+                # 解析時間
+                entry_time = datetime.fromisoformat(t_dict["entry_time"]) if t_dict.get("entry_time") else None
+                exit_time = datetime.fromisoformat(t_dict["exit_time"]) if t_dict.get("exit_time") else None
+                
+                trade = Trade(
+                    entry_time=entry_time,
+                    exit_time=exit_time,
+                    side=t_dict["side"],
+                    entry_price=t_dict["entry_price"],
+                    exit_price=t_dict["exit_price"],
+                    quantity=t_dict["quantity"],
+                    pnl=t_dict["pnl"],
+                    pnl_points=t_dict["pnl_points"],
+                    commission=t_dict["commission"],
+                    reason=t_dict["reason"],
+                    bars_held=t_dict.get("bars_held", 0),
+                    instrument=t_dict.get("instrument", ""),
+                    strategy=t_dict.get("strategy", ""),
+                    market_regime=t_dict.get("market_regime", ""),
+                    signal_strength=t_dict.get("signal_strength", 0.0),
+                    max_favorable=t_dict.get("max_favorable", 0.0),
+                    max_adverse=t_dict.get("max_adverse", 0.0),
+                    id=t_dict.get("id", str(uuid.uuid4())),
+                )
+                self.trades.append(trade)
+                
+            # 重建 daily_trades
+            self.daily_trades = self.trades.copy()
+            self._today = datetime.now().strftime("%Y-%m-%d")
+            
+            # 從 trades 重新累加初始餘額
+            self.balance = self.initial_balance + sum(t.net_pnl for t in self.trades)
+            
+            # import loguru (防呆確認 logger 可用)
+            from loguru import logger
+            logger.info(f"[PositionManager] 成功載入當日交易紀錄: {len(self.trades)} 筆")
+        except Exception as e:
+            from loguru import logger
+            logger.error(f"[PositionManager] 載入當日交易紀錄失敗: {e}")
+
+    def save_daily_trades(self):
+        """將當日交易紀錄寫入 JSON（包含觀盤模式的紀錄）"""
+        path = self._get_daily_trades_path()
+        try:
+            data = [t.to_perf_dict() for t in self.trades]
+            with open(path, "w", encoding="utf-8") as f:
+                json.dump(data, f, ensure_ascii=False, indent=2)
+        except Exception as e:
+            from loguru import logger
+            logger.error(f"[PositionManager] 儲存當日交易紀錄失敗: {e}")
+
+    def delete_trade(self, trade_id: str) -> bool:
+        """刪除指定交易紀錄，並重新計算餘額"""
+        with self._lock:
+            initial_count = len(self.trades)
+            self.trades = [t for t in self.trades if t.id != trade_id]
+            self.daily_trades = [t for t in self.daily_trades if t.id != trade_id]
+            
+            if len(self.trades) < initial_count:
+                # 重新計算餘額
+                self.balance = self.initial_balance + sum(t.net_pnl for t in self.trades)
+                self.save_daily_trades()
+                from loguru import logger
+                logger.info(f"[PositionManager] 成功刪除交易紀錄 {trade_id}")
+                return True
+            return False
+
+    def update_trade(self, trade_id: str, updates: dict) -> bool:
+        """修改指定交易紀錄，並重新計算餘額"""
+        with self._lock:
+            for t in self.trades:
+                if t.id == trade_id:
+                    # 允許修改特定欄位
+                    if "pnl" in updates: t.pnl = float(updates["pnl"])
+                    if "pnl_points" in updates: t.pnl_points = float(updates["pnl_points"])
+                    if "commission" in updates: t.commission = float(updates["commission"])
+                    if "entry_price" in updates: t.entry_price = float(updates["entry_price"])
+                    if "exit_price" in updates: t.exit_price = float(updates["exit_price"])
+                    if "reason" in updates: t.reason = str(updates["reason"])
+                    
+                    self.balance = self.initial_balance + sum(t_inner.net_pnl for t_inner in self.trades)
+                    self.save_daily_trades()
+                    from loguru import logger
+                    logger.info(f"[PositionManager] 成功修改交易紀錄 {trade_id}")
+                    return True
+            return False

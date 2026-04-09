@@ -155,6 +155,7 @@ class MultiFactorSignalGenerator:
         self.weights = weights or self.DEFAULT_WEIGHTS.copy()
         self.params = AdaptiveParams()
         self.risk_profile = "balanced"
+        self.latest_total_score = 0.0
 
     def generate(
         self,
@@ -175,6 +176,7 @@ class MultiFactorSignalGenerator:
 
         # 不在趨勢狀態 → 不產生動量訊號
         if regime in (MarketRegime.RANGING, MarketRegime.VOLATILE):
+            self.latest_total_score = 0.0
             return None
 
         # 判斷方向
@@ -186,6 +188,7 @@ class MultiFactorSignalGenerator:
         # 加權總分
         total_score = sum(f.score * f.weight for f in factors)
         total_score = min(max(total_score, 0.0), 1.0)
+        self.latest_total_score = total_score
 
         # 未達門檻 → 不進場
         if total_score < self.params.min_signal_strength:

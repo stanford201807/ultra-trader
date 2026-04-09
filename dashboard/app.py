@@ -13,6 +13,8 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 
+from dashboard.schemas.backtest import BacktestRunRequest
+from dashboard.services.backtest_service import run_backtest as run_backtest_service
 from dashboard.websocket import DashboardWebSocket
 
 
@@ -33,6 +35,64 @@ _engine = None
 _ws_manager = DashboardWebSocket()
 
 STATIC_DIR = Path(__file__).parent / "static"
+
+
+def _build_pm_account_snapshot(engine, positions: list[dict]) -> dict:
+    """以 PositionManager 狀態組裝帳戶快照。"""
+    pm = engine.position_manager
+    prices = {}
+    for inst in engine.instruments:
+        pipeline = engine.pipelines.get(inst)
+        if pipeline:
+            prices[inst] = pipeline.aggregator.current_price
+    total_unrealized = pm.get_total_unrealized_pnl(prices)
+    balance = pm.balance
+    equity = balance + total_unrealized
+    margin_used = pm.get_total_margin_used()
+    return {
+        "account": {
+            "equity": round(equity, 0),
+            "balance": round(balance, 0),
+            "margin_used": round(margin_used, 0),
+            "margin_available": round(equity - margin_used, 0),
+            "unrealized_pnl": round(total_unrealized, 0),
+        },
+        "positions": positions,
+    }
+
+
+def _build_mode_switch_config(engine, mode: str) -> dict:
+    """模式切換時保留目前執行參數，避免重新初始化後回到預設值。"""
+    return {
+        "trading_mode": mode,
+        "risk_profile": engine.risk_profile,
+        "timeframe": engine.timeframe,
+        "instruments": list(engine.instruments),
+        "auto_trade": engine.auto_trade,
+    }
+
+
+def _resolve_close_targets(engine, code: str) -> tuple[str, str]:
+    """
+    解析平倉目標：
+    - `order_target`：實際送單用，可為內部商品代碼或真實合約碼
+    - `sync_instrument`：若能對回引擎持倉則同步平倉，否則留空
+    """
+    if not code:
+        return "", ""
+
+    broker = getattr(engine, "broker", None)
+    if broker and hasattr(broker, "resolve_instrument_from_code"):
+        instrument = broker.resolve_instrument_from_code(code)
+        if instrument:
+            return instrument, instrument
+        return code, ""
+
+    for instrument in engine.instruments:
+        if code.startswith(instrument):
+            return instrument, instrument
+
+    return code, ""
 
 
 @asynccontextmanager
@@ -69,9 +129,21 @@ def create_app(engine=None) -> FastAPI:
     )
 
     # ---- 靜態檔案 ----
+    # 注意：index.html 走 `/`，其餘靜態資源走 `/static/*`
+    app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
+
+    # ---- 靜態檔案 ----
     @app.get("/")
     async def index():
         return FileResponse(STATIC_DIR / "index.html", headers={
+            "Cache-Control": "no-cache, no-store, must-revalidate",
+            "Pragma": "no-cache",
+            "Expires": "0",
+        })
+
+    @app.get("/backtest")
+    async def backtest_page():
+        return FileResponse(STATIC_DIR / "backtest" / "index.html", headers={
             "Cache-Control": "no-cache, no-store, must-revalidate",
             "Pragma": "no-cache",
             "Expires": "0",
@@ -93,6 +165,30 @@ def create_app(engine=None) -> FastAPI:
         if not _engine:
             return []
         return _engine.get_trade_history()
+
+    @app.delete("/api/trades/{trade_id}")
+    async def delete_trade(trade_id: str):
+        """刪除單筆交易紀錄"""
+        if not _engine:
+            from fastapi.responses import JSONResponse
+            return JSONResponse({"error": "引擎未初始化"}, status_code=503)
+        success = _engine.delete_trade(trade_id)
+        if success:
+            return {"status": "ok", "message": f"Deleted trade {trade_id}"}
+        from fastapi.responses import JSONResponse
+        return JSONResponse({"error": "Trade not found or failed to delete"}, status_code=404)
+
+    @app.put("/api/trades/{trade_id}")
+    async def update_trade(trade_id: str, updates: dict):
+        """修改單筆交易紀錄"""
+        if not _engine:
+            from fastapi.responses import JSONResponse
+            return JSONResponse({"error": "引擎未初始化"}, status_code=503)
+        success = _engine.update_trade(trade_id, updates)
+        if success:
+            return {"status": "ok", "message": f"Updated trade {trade_id}"}
+        from fastapi.responses import JSONResponse
+        return JSONResponse({"error": "Trade not found or failed to update"}, status_code=404)
 
     @app.get("/api/kbars")
     async def get_kbars(timeframe: int = 1, count: int = 200, instrument: str = ""):
@@ -211,39 +307,29 @@ def create_app(engine=None) -> FastAPI:
             return []
         return _engine.performance.get_activity_log(count)
 
+    @app.post("/api/backtest/run")
+    async def run_backtest_api(body: BacktestRunRequest):
+        """執行回測並回傳摘要/報告。"""
+        return _execute_backtest_run(body)
+
     @app.get("/api/real-account")
     async def get_real_account():
         """從 Shioaji 查詢真實帳戶資訊，查不到時 fallback 到引擎 PositionManager"""
         if not _engine or not _engine.broker:
             return JSONResponse({"error": "Broker 未初始化"}, status_code=503)
         try:
-            info = _engine.broker.get_account_info()
+            if _engine.trading_mode == "paper" and _engine.position_manager:
+                return _build_pm_account_snapshot(_engine, [])
+
             positions = []
             if hasattr(_engine.broker, 'get_real_positions'):
                 positions = _engine.broker.get_real_positions()
 
+            info = _engine.broker.get_account_info()
+
             # Shioaji 期貨帳戶無法 API 查餘額，fallback 到 PositionManager
             if info.equity <= 0 and info.balance <= 0 and _engine.position_manager:
-                pm = _engine.position_manager
-                prices = {}
-                for inst in _engine.instruments:
-                    pipeline = _engine.pipelines.get(inst)
-                    if pipeline:
-                        prices[inst] = pipeline.aggregator.current_price
-                total_unrealized = pm.get_total_unrealized_pnl(prices)
-                balance = pm.balance
-                equity = balance + total_unrealized
-                margin_used = pm.get_total_margin_used()
-                return {
-                    "account": {
-                        "equity": round(equity, 0),
-                        "balance": round(balance, 0),
-                        "margin_used": round(margin_used, 0),
-                        "margin_available": round(equity - margin_used, 0),
-                        "unrealized_pnl": round(total_unrealized, 0),
-                    },
-                    "positions": positions,
-                }
+                return _build_pm_account_snapshot(_engine, positions)
 
             return {
                 "account": {
@@ -309,26 +395,23 @@ def create_app(engine=None) -> FastAPI:
         quantity = int(body.get("quantity", 1))
         # 反向下單平倉
         action = "BUY" if "Sell" in direction else "SELL"
-        # 找對應的 instrument
-        instrument = ""
-        for inst in _engine.instruments:
-            if code.startswith(inst):
-                instrument = inst
-                break
-        if not instrument:
+        order_target, sync_instrument = _resolve_close_targets(_engine, code)
+        if not order_target:
             return JSONResponse({"error": f"找不到對應商品: {code}"}, status_code=400)
         # Paper 模式不允許透過此 API 平倉（只操作引擎虛擬持倉）
         if _engine.trading_mode == "paper":
-            _engine.manual_close(instrument=instrument)
+            if sync_instrument:
+                _engine.manual_close(instrument=sync_instrument)
             return {"status": "ok", "action": action, "price": 0, "note": "paper mode - no real order"}
         result = _engine.broker.place_order(
-            action=action, quantity=quantity, price_type="MKT", instrument=instrument,
+            action=action, quantity=quantity, price_type="MKT", instrument=order_target,
         )
         if not result.success:
             return JSONResponse({"error": result.message}, status_code=400)
         # 同時關閉引擎持倉
-        _engine.manual_close(instrument=instrument)
-        return {"status": "ok", "action": action, "price": result.fill_price}
+        if sync_instrument:
+            _engine.manual_close(instrument=sync_instrument)
+        return {"status": "ok", "action": action, "price": result.fill_price, "target": order_target}
 
     @app.get("/api/instruments")
     async def get_instruments():
@@ -347,9 +430,29 @@ def create_app(engine=None) -> FastAPI:
             return JSONResponse({"error": "引擎未初始化"}, status_code=503)
 
         if "risk_profile" in settings:
-            _engine.set_risk_profile(settings["risk_profile"])
+            try:
+                canonical = _engine.set_risk_profile(settings["risk_profile"])
+            except ValueError as e:
+                return JSONResponse({"error": str(e)}, status_code=400)
+            return {"status": "ok", "risk_profile": canonical}
 
         return {"status": "ok"}
+
+    @app.get("/api/auto-trade")
+    async def get_auto_trade():
+        """取得自動交易狀態"""
+        if not _engine:
+            return JSONResponse({"error": "引擎未初始化"}, status_code=503)
+        return {"auto_trade": _engine.auto_trade}
+
+    @app.post("/api/auto-trade")
+    async def toggle_auto_trade(body: dict):
+        """切換自動交易"""
+        if not _engine:
+            return JSONResponse({"error": "引擎未初始化"}, status_code=503)
+        enabled = body.get("enabled", False)
+        result = _engine.toggle_auto_trade(enabled)
+        return {"status": "ok", "auto_trade": result}
 
     @app.post("/api/mode/{mode}")
     async def switch_mode(mode: str):
@@ -367,13 +470,15 @@ def create_app(engine=None) -> FastAPI:
         if mode == _engine.trading_mode:
             return {"status": "ok", "message": f"已經在 {mode} 模式", "mode": mode}
 
+        init_config = _build_mode_switch_config(_engine, mode)
+
         # 先停止，切換模式，再重新初始化和啟動
         _engine.stop()
         import os
         os.environ["TRADING_MODE"] = mode
         _engine.trading_mode = mode
 
-        success = _engine.initialize()
+        success = _engine.initialize(init_config)
         if not success:
             return JSONResponse({"error": f"切換到 {mode} 失敗，請檢查 .env 設定"}, status_code=500)
 
@@ -419,3 +524,16 @@ def create_app(engine=None) -> FastAPI:
             await _ws_manager.disconnect(ws)
 
     return app
+
+
+def _execute_backtest_run(body: BacktestRunRequest) -> dict | JSONResponse:
+    """獨立可測的回測執行包裝。"""
+    try:
+        result = run_backtest_service(body)
+        return _sanitize_for_json(result)
+    except ValueError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=400)
+    except FileNotFoundError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=404)
+    except Exception as exc:
+        return JSONResponse({"error": f"回測執行失敗: {exc}"}, status_code=500)

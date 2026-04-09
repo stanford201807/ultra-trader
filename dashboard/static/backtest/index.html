@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>UltraTrader 回測</title>
+  <link rel="stylesheet" href="/static/backtest/styles.css">
+</head>
+<body>
+  <main class="backtest-app">
+    <header class="page-header">
+      <div>
+        <p class="eyebrow">UltraTrader</p>
+        <h1>策略回測</h1>
+        <p class="subtext">參數可調整，執行後即時回傳摘要與交易明細。</p>
+      </div>
+      <a class="link-home" href="/" target="_blank" rel="noopener noreferrer">開新分頁看盤</a>
+    </header>
+
+    <section class="panel">
+      <div class="preset-row" id="preset-buttons">
+        <span class="preset-label">快速 Preset</span>
+        <button type="button" class="preset-btn" data-preset="conservative">保守</button>
+        <button type="button" class="preset-btn" data-preset="balanced">平衡</button>
+        <button type="button" class="preset-btn" data-preset="aggressive">積極</button>
+      </div>
+
+      <form id="backtest-form" class="form-grid">
+        <label>
+          策略
+          <select name="strategy">
+            <option value="momentum">momentum</option>
+            <option value="mean_reversion">mean_reversion</option>
+          </select>
+        </label>
+        <label>
+          風險等級
+          <select name="risk_profile">
+            <option value="conservative">conservative</option>
+            <option value="balanced" selected>balanced</option>
+            <option value="aggressive">aggressive</option>
+            <option value="crisis">crisis</option>
+            <option value="dangerous">dangerous</option>
+          </select>
+        </label>
+        <label>
+          商品
+          <select name="instrument">
+            <option value="TMF" selected>TMF</option>
+            <option value="TGF">TGF</option>
+          </select>
+        </label>
+        <label>
+          初始資金
+          <input name="initial_balance" type="number" min="1" step="1000" value="43000">
+        </label>
+        <label>
+          滑價（點）
+          <input name="slippage" type="number" min="0" max="20" value="1">
+        </label>
+        <label>
+          手續費（單邊）
+          <input name="commission" type="number" min="0" step="1" value="18">
+        </label>
+        <label>
+          合成資料天數
+          <input name="days" type="number" min="1" max="3650" value="30">
+        </label>
+        <label>
+          K 棒週期（分鐘）
+          <input name="timeframe_minutes" type="number" min="1" max="60" value="1">
+        </label>
+        <label>
+          起始日期
+          <input name="start_date" type="date">
+        </label>
+        <label>
+          結束日期
+          <input name="end_date" type="date">
+        </label>
+        <label>
+          最大 K 棒
+          <input name="max_bars" type="number" min="100" max="500000" value="20000">
+        </label>
+        <label>
+          Orderbook Profile
+          <select name="orderbook_profile">
+            <option value="">(自動)</option>
+            <option value="A1">A1</option>
+            <option value="A2">A2</option>
+            <option value="A3">A3</option>
+            <option value="A4">A4</option>
+            <option value="A5">A5</option>
+          </select>
+        </label>
+        <label class="check-row">
+          <input name="use_orderbook_filter" type="checkbox">
+          使用 Orderbook Filter
+        </label>
+      </form>
+
+      <div class="actions">
+        <button id="run-backtest" type="button">執行回測</button>
+        <span id="run-status" class="status-text">尚未執行</span>
+      </div>
+      <p id="run-error" class="error-text" hidden></p>
+    </section>
+
+    <section class="panel chart-panel">
+      <div class="chart-toolbar">
+        <h2>權益曲線</h2>
+        <div class="chart-toolbar-actions">
+          <div class="zoom-group">
+            <button id="zoom-recent-20" type="button" class="tool-btn">最近20%</button>
+            <button id="zoom-all" type="button" class="tool-btn active">全區間</button>
+          </div>
+          <div class="export-group">
+            <button id="export-json" type="button" class="tool-btn">匯出 JSON</button>
+            <button id="export-csv" type="button" class="tool-btn">匯出 CSV</button>
+          </div>
+        </div>
+      </div>
+      <svg id="equity-chart" viewBox="0 0 960 260" preserveAspectRatio="none" aria-label="回測權益曲線"></svg>
+      <div id="equity-chart-meta" class="chart-meta">等待回測資料...</div>
+    </section>
+
+    <section class="result-grid">
+      <article class="panel">
+        <h2>摘要</h2>
+        <dl id="summary-list" class="summary-list"></dl>
+      </article>
+      <article class="panel">
+        <h2>績效指標</h2>
+        <div id="metrics-list" class="metrics-list"></div>
+      </article>
+    </section>
+
+    <section class="panel">
+      <h2>交易明細（前 50 筆）</h2>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>方向</th>
+              <th>進場時間</th>
+              <th>出場時間</th>
+              <th>進場價</th>
+              <th>出場價</th>
+              <th>損益</th>
+              <th>原因</th>
+            </tr>
+          </thead>
+          <tbody id="trades-body"></tbody>
+        </table>
+      </div>
+    </section>
+  </main>
+  <script type="module" src="/static/app/backtestPage.js"></script>
+</body>
+</html>

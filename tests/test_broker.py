@@ -9,8 +9,9 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 import unittest
 from datetime import datetime
+from types import SimpleNamespace
 
-from core.broker import MockBroker, OrderResult
+from core.broker import MockBroker, OrderResult, ShioajiBroker
 from core.market_data import Tick
 
 
@@ -121,6 +122,19 @@ class TestMockBroker(unittest.TestCase):
         broker.disconnect()
         # 斷線後不應該再產生 tick
         self.assertFalse(broker._running)
+
+
+class TestShioajiBrokerHelpers(unittest.TestCase):
+    def test_resolve_contract_target_supports_raw_contract_code(self):
+        broker = ShioajiBroker(api_key="k", secret_key="s", contract_codes=["TMF"])
+        raw_contract = SimpleNamespace(code="MXFD6", name="小台近月")
+        family = SimpleNamespace(MXFD6=raw_contract)
+        broker._api = SimpleNamespace(Contracts=SimpleNamespace(Futures=SimpleNamespace(MXF=family)))
+
+        contract, target = broker._resolve_contract_target("MXFD6")
+
+        self.assertIs(contract, raw_contract)
+        self.assertEqual(target, "MXFD6")
 
 
 if __name__ == "__main__":

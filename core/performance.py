@@ -52,6 +52,7 @@ class DailyPerformance:
 
     # 策略
     primary_strategy: str = ""
+    strategy_performance: dict = field(default_factory=dict)
     market_regime_summary: dict = field(default_factory=dict)
 
     # 交易明細
@@ -382,7 +383,7 @@ class PerformanceTracker:
 
         total_wins = sum(winners) if winners else 0
         total_losses = abs(sum(losers)) if losers else 0
-        daily.profit_factor = total_wins / total_losses if total_losses > 0 else float("inf")
+        daily.profit_factor = total_wins / total_losses if total_losses > 0 else 999.0
 
         daily.largest_win = max(pnls) if pnls else 0
         daily.largest_loss = min(pnls) if pnls else 0
@@ -391,6 +392,23 @@ class PerformanceTracker:
         dd, dd_pct = self._calculate_drawdown(pnls)
         daily.max_drawdown = dd
         daily.max_drawdown_pct = dd_pct
+
+        # 策略分佈計算
+        strategy_stats = {}
+        for t in trades:
+            strat = t.get("strategy", "unknown")
+            if strat not in strategy_stats:
+                strategy_stats[strat] = {"pnl": 0.0, "trades": 0, "wins": 0}
+            strategy_stats[strat]["trades"] += 1
+            tpnl = t.get("net_pnl", t.get("pnl", 0))
+            strategy_stats[strat]["pnl"] += tpnl
+            if tpnl > 0:
+                strategy_stats[strat]["wins"] += 1
+                
+        daily.strategy_performance = strategy_stats
+        
+        if strategy_stats:
+            daily.primary_strategy = max(strategy_stats.items(), key=lambda x: x[1]["trades"])[0]
 
         return daily
 

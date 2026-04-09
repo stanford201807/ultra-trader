@@ -129,6 +129,64 @@ class ShioajiBroker(BaseBroker):
         self._on_connection_lost_cb = on_lost
         self._on_connection_restored_cb = on_restored
 
+    def resolve_instrument_from_code(self, code: str) -> str:
+        """將真實合約碼解析回內部商品代碼；解析不到則回傳空字串。"""
+        if not code:
+            return ""
+
+        mapped = self._code_to_instrument.get(code, "")
+        if mapped:
+            return mapped
+
+        for instrument in self._contract_codes:
+            if code.startswith(instrument):
+                return instrument
+        return ""
+
+    def _find_contract_by_code(self, code: str):
+        """依實際合約碼查找 Shioaji contract，支援帳上舊倉位如 MXFD6。"""
+        if not self._api or not code:
+            return None
+
+        futures = getattr(self._api.Contracts, "Futures", None)
+        if futures is None:
+            return None
+
+        for family_name in dir(futures):
+            if family_name.startswith("_"):
+                continue
+            family = getattr(futures, family_name, None)
+            if family is None:
+                continue
+
+            direct_contract = getattr(family, code, None)
+            if direct_contract is not None:
+                return direct_contract
+
+            try:
+                for contract in family:
+                    if getattr(contract, "code", "") == code:
+                        return contract
+            except TypeError:
+                continue
+
+        return None
+
+    def _resolve_contract_target(self, instrument_or_code: str):
+        """同時支援內部商品代碼與真實合約碼的下單解析。"""
+        if instrument_or_code in self._contracts:
+            return self._contracts[instrument_or_code], instrument_or_code
+
+        exact_instrument = self.resolve_instrument_from_code(instrument_or_code)
+        if exact_instrument and exact_instrument in self._contracts:
+            return self._contracts[exact_instrument], exact_instrument
+
+        contract = self._find_contract_by_code(instrument_or_code)
+        if contract is not None:
+            return contract, instrument_or_code
+
+        return self._contract, self._contract_code if self._contract else ""
+
     def connect(self) -> bool:
         try:
             import shioaji as sj
@@ -391,14 +449,11 @@ class ShioajiBroker(BaseBroker):
     def place_order(self, action: str, quantity: int, price: float = 0,
                     price_type: str = "MKT", instrument: str = "") -> OrderResult:
         """下單（指定商品），等待成交回報確認"""
-        contract = self._contracts.get(instrument, self._contract)
+        contract, instr_key = self._resolve_contract_target(instrument)
         if not self._api or not contract:
             return OrderResult(success=False, message=f"找不到合約: {instrument}")
 
         import shioaji as sj
-
-        # Resolve instrument key for deal matching
-        instr_key = instrument or self._contract_code
 
         with self._lock:
             try:

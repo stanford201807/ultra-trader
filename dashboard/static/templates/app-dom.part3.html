@@ -1,0 +1,130 @@
+  <!-- ====== 可摺疊：Intelligence ====== -->
+  <div class="collapse-section" v-if="intel.left_side">
+    <div :class="['collapse-toggle', showIntel ? 'open' : '']" @click="showIntel = !showIntel">
+      <span>&#129504; 市場情報 — LEFT-SIDE {{ (intel.left_side.score * 100).toFixed(0) }} | {{ leftSignalText }}</span>
+      <span class="arrow">&#9660;</span>
+    </div>
+    <div :class="['collapse-body', showIntel ? 'open' : '']">
+      <div class="intel-grid">
+        <div class="intel-score-card">
+          <div style="font-size: calc(11px * var(--uifs)); color: var(--text-secondary); margin-bottom: 8px;">LEFT-SIDE SCORE</div>
+          <div class="score-value" :style="{color: leftScoreColor}">
+            {{ intel.left_side.score >= 0 ? '+' : '' }}{{ (intel.left_side.score * 100).toFixed(0) }}
+          </div>
+          <div :class="['score-signal', 'signal-' + (intel.left_side.signal || 'neutral').replace('_', '-')]">
+            {{ leftSignalText }}
+          </div>
+          <div style="font-size: calc(10px * var(--uifs)); color: var(--text-muted); margin-top: 4px; font-family: var(--font-mono);">
+            信心度 {{ (intel.left_side.confidence * 100).toFixed(0) }}%
+          </div>
+        </div>
+
+        <div class="intel-factors-card">
+          <div style="font-size: calc(11px * var(--uifs)); color: var(--text-secondary); margin-bottom: 6px;">9 因子評分</div>
+          <div v-for="f in (intel.left_side.factors || [])" :key="f.name" class="factor-row">
+            <span class="factor-name">{{ f.name_zh }}</span>
+            <div class="factor-bar-wrap">
+              <div class="factor-bar-center"></div>
+              <div v-if="f.score > 0" class="factor-bar-fill positive" :style="{width: (Math.abs(f.score) * 50) + '%'}"></div>
+              <div v-else-if="f.score < 0" class="factor-bar-fill negative" :style="{width: (Math.abs(f.score) * 50) + '%'}"></div>
+            </div>
+            <span class="factor-score-text" :style="{color: f.score > 0 ? 'var(--green)' : f.score < 0 ? 'var(--red)' : 'var(--text-muted)'}">
+              {{ f.score > 0 ? '+' : '' }}{{ (f.score * 100).toFixed(0) }}
+            </span>
+            <span class="factor-detail" :title="f.detail">{{ f.detail }}</span>
+          </div>
+        </div>
+
+        <div class="intel-data-card">
+          <div style="font-size: calc(11px * var(--uifs)); color: var(--text-secondary); margin-bottom: 6px;">市場數據</div>
+          <div class="intel-data-grid">
+            <div class="intel-data-item">
+              <div class="intel-data-label">VIX</div>
+              <div class="intel-data-value" :style="{color: (intel.international?.vix||0) > 25 ? 'var(--red)' : (intel.international?.vix||0) < 15 ? 'var(--green)' : 'var(--text-primary)'}">
+                {{ (intel.international?.vix || 0).toFixed(1) }}
+              </div>
+            </div>
+            <div class="intel-data-item">
+              <div class="intel-data-label">P/C Ratio</div>
+              <div class="intel-data-value" :style="{color: (intel.options?.pc_ratio_oi||0) > 1.2 ? 'var(--red)' : (intel.options?.pc_ratio_oi||0) < 0.8 ? 'var(--green)' : 'var(--text-primary)'}">
+                {{ (intel.options?.pc_ratio_oi || 0).toFixed(2) }}
+              </div>
+            </div>
+            <div class="intel-data-item">
+              <div class="intel-data-label">外資期貨OI</div>
+              <div class="intel-data-value" :style="{color: (intel.institutional?.foreign_oi_net||0) > 0 ? 'var(--green)' : (intel.institutional?.foreign_oi_net||0) < 0 ? 'var(--red)' : 'var(--text-muted)'}">
+                {{ formatNumber(intel.institutional?.foreign_oi_net || 0) }}
+              </div>
+            </div>
+            <div class="intel-data-item">
+              <div class="intel-data-label">外資現貨</div>
+              <div class="intel-data-value" :style="{color: (intel.institutional?.foreign_spot_buy_sell||0) > 0 ? 'var(--green)' : (intel.institutional?.foreign_spot_buy_sell||0) < 0 ? 'var(--red)' : 'var(--text-muted)'}">
+                {{ (intel.institutional?.foreign_spot_buy_sell || 0).toFixed(1) }}億
+              </div>
+            </div>
+            <div class="intel-data-item">
+              <div class="intel-data-label">SP500</div>
+              <div class="intel-data-value" :style="{color: (intel.international?.sp500_change_pct||0) > 0 ? 'var(--green)' : (intel.international?.sp500_change_pct||0) < 0 ? 'var(--red)' : 'var(--text-muted)'}">
+                {{ (intel.international?.sp500_change_pct||0) > 0 ? '+' : '' }}{{ (intel.international?.sp500_change_pct || 0).toFixed(1) }}%
+              </div>
+            </div>
+            <div class="intel-data-item">
+              <div class="intel-data-label">SOX</div>
+              <div class="intel-data-value" :style="{color: (intel.international?.sox_change_pct||0) > 0 ? 'var(--green)' : (intel.international?.sox_change_pct||0) < 0 ? 'var(--red)' : 'var(--text-muted)'}">
+                {{ (intel.international?.sox_change_pct||0) > 0 ? '+' : '' }}{{ (intel.international?.sox_change_pct || 0).toFixed(1) }}%
+              </div>
+            </div>
+          </div>
+          <button class="intel-refresh-btn" @click="refreshIntel">&#128260; 更新情報</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ====== 可摺疊：活動日誌 ====== -->
+  <div class="collapse-section">
+    <div :class="['collapse-toggle', showActivity ? 'open' : '']" @click="showActivity = !showActivity">
+      <span>
+        &#128220; 引擎日誌
+        <span class="paper-badge" v-if="state.trading_mode === 'paper' && state.paper_signals > 0" style="margin-left: 6px;">
+          PAPER &#9889; {{ state.paper_signals }}
+        </span>
+      </span>
+      <span style="display: flex; align-items: center; gap: 6px;">
+        <span style="font-size: calc(10px * var(--uifs));" :style="{ color: state.engine_state === 'running' ? 'var(--green)' : 'var(--text-muted)' }">
+          {{ state.engine_state === 'running' ? 'LIVE' : 'OFF' }}
+        </span>
+        <span class="arrow">&#9660;</span>
+      </span>
+    </div>
+    <div :class="['collapse-body', showActivity ? 'open' : '']">
+      <div class="activity-card">
+        <div class="activity-list">
+          <div v-if="activityLog.length === 0" style="color: var(--text-muted); font-size: calc(11px * var(--uifs)); text-align: center; padding: 16px;">
+            {{ state.engine_state === 'running' ? '等待數據...' : '引擎未啟動' }}
+          </div>
+          <div v-for="(a, i) in activityLogReversed" :key="i"
+               :class="['activity-item', i === 0 ? 'new' : '']">
+            <span class="activity-time">{{ formatActivityTime(a.time) }}</span>
+            <span class="activity-icon">{{ activityIcon(a.type) }}</span>
+            <span :class="['activity-msg', activityMsgClass(a.type)]">{{ a.message }}</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ====== 底部狀態列 ====== -->
+  <div class="footer-strip">
+    <span>
+      <span :style="{ color: circuitDotClass === 'circuit-active' ? 'var(--green)' : circuitDotClass === 'circuit-halted' ? 'var(--red)' : 'var(--amber)' }">&#9679;</span>
+      熔斷: {{ circuitText }} ({{ state.risk?.circuit_breaker?.daily_loss || 0 }}/{{ state.risk?.circuit_breaker?.max_daily_loss || 500 }})
+    </span>
+    <span>勝率: {{ stats.win_rate ? stats.win_rate.toFixed(1) + '%' : '-' }}</span>
+    <span>盈虧比: {{ stats.profit_factor ? stats.profit_factor.toFixed(2) : '-' }}</span>
+    <span>{{ state.trading_mode?.toUpperCase() }} | {{ activeInstrument }} | Tick {{ tickCount }}</span>
+  </div>
+
+</div>
+
+

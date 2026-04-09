@@ -45,7 +45,11 @@ graph TD
     end
 
     subgraph Core[Core Engine Layer]
-        Engine[core.engine.TradingEngine<br>總分派調度器]
+        Engine[core/engine/__init__.py<br>TradingEngine Facade]
+        Events[core/engine/events.py<br>EventProcessor]
+        Exec[core/engine/executor.py<br>OrderExecutor]
+        Queries[core/engine/queries.py<br>EngineQueries]
+        Health[core/engine/health.py<br>HealthMonitor]
         PosMgr[core.position.PositionManager<br>庫存紀錄]
         Market[core.market_data<br>Tick/KBar 聚合與技術指標]
         Broker[core.broker<br>Shioaji / Mock 券商連線]
@@ -70,12 +74,16 @@ graph TD
 
     %% Dependencies
     Engine -->|調度/訂閱| Broker
-    Engine -->|紀錄/驗證| PosMgr
-    Engine -->|餵入原始報價| Market
-    Broker -->|回傳 Tick/成交回報| Engine
+    Engine -->|持倉/記錄| PosMgr
+    Engine --> Events
+    Engine --> Exec
+    Engine --> Queries
+    Engine --> Health
+    Broker -->|回傳 Tick 回呼| Events
     Market -->|Snapshot| Strategy
-    Strategy -->|輸出 買/賣 Signal| Engine
-    Engine -->|Signal + 資金要求| RiskMgr
+    Strategy -->|輸出 Signal| Events
+    Events -->|下單委派| Exec
+    Exec -->|風控審核| RiskMgr
     RiskMgr -.->|允許 / 阻擋下單| Engine
     Engine -->|大盤/特徵| Intelligence
     App -->|讀取狀態| Engine
@@ -84,7 +92,11 @@ graph TD
 
 ### 模組邊界與職責定義
 
-- **TradingEngine (`core.engine`)**：唯一具備狀態的全局協調器。負責將 Broker 傳來的 Tick 引導至 Market，並用 Queue 單行緒派發事件，不處理具體金融數學邏輯。
+- **TradingEngine (`core/engine/__init__.py`)**：全域協調器（Facade）。負責初始化 Broker/風控/管線與子系統，並提供穩定的 public API（`start/stop/pause/resume/get_state/toggle_auto_trade/set_risk_profile`）。
+- **EventProcessor (`core/engine/events.py`)**：事件分派與策略決策路由。接收 Tick/KBar 事件、更新指標快照、廣播資料，並在需要時委派進出場給 `OrderExecutor`。
+- **OrderExecutor (`core/engine/executor.py`)**：下單與持倉寫入的唯一入口。包含冷卻機制、paper/live 路徑差異、以及風控評估呼叫。
+- **EngineQueries (`core/engine/queries.py`)**：狀態查詢聚合（供 Dashboard/API 使用），避免 UI 直接耦合引擎內部結構。
+- **HealthMonitor (`core/engine/health.py`)**：心跳與異常偵測（包含持倉核對）。
 - **Strategy (`strategy.*`)**：純業務邏輯層。輸入 `MarketSnapshot`，輸出統一的 `Signal`。此層無外部環境依賴，極度適合進行 mock 與自動化單元測試。
 - **Risk (`risk.*`)**：純控管邏輯。只根據可用資金、連續虧損次數與目前傳入訊息進行把關，不具有下單權限。
 - **Broker (`core.broker`)**：隔離外部變動的 Adapter。提供統一介面 `place_order`，隔離了實體 Shioaji API 或內部 Mock 生態。
@@ -102,8 +114,8 @@ graph TD
 ### 交易資料流與執行迴圈
 整個系統依循強烈的 **Event-Driven (事件驅動)** 設計：
 1. `Broker` 透過 WebSockets 或模擬器產生 `Tick` 報價回呼。
-2. `Engine._on_tick` 將事件封裝放入 Thread-Safe 的 `queue.Queue`（為確保時序與避免併發競爭）。
-3. `Engine._engine_loop` 巡迴取出 `Tick`。
+2. `EventProcessor.on_tick` 將事件放入 Thread-Safe 的 `queue.Queue`（為確保時序與避免併發競爭）。
+3. `EventProcessor._engine_loop` 巡迴取出事件並分派（tick / kbar）。
    - **檢查硬停損**：比對現在價格與保護性價格，觸及則強平。
    - **技術聚合**：傳遞至 `TickAggregator` 更新 K 線圖，接著交給 `IndicatorEngine` 計算均線等特徵。
    - **策略產生**：將組裝好的市場快照交由 `Strategy.check_exit` 或 `check_entry` 分析，若達到閾值則觸發交易信號。
